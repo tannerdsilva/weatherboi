@@ -29,21 +29,58 @@ public struct EncodedDouble:Sendable, ExpressibleByFloatLiteral, Equatable, Comp
 	}
 }
 
+@RAW_staticbuff(bytes:4)
+@RAW_staticbuff_fixedwidthinteger_type<UInt32>(bigEndian:true)
+@MDB_comparable()
+public struct FourDigitDecimalPrecisionValue:Sendable, ExpressibleByIntegerLiteral, Equatable, Comparable, CustomDebugStringConvertible {
+	public var debugDescription:String {
+		return "\(Double(RAW_native()) / 10000.0)"
+	}
+	public init(_ value:Double) {
+		self.init(RAW_native:UInt32(value * 10000.0))
+	}
+	public static func - (_ lhs:FourDigitDecimalPrecisionValue, _ rhs:FourDigitDecimalPrecisionValue) -> FourDigitDecimalPrecisionValue {
+		return FourDigitDecimalPrecisionValue(RAW_native:lhs.RAW_native() - rhs.RAW_native())
+	}
+	public static func + (_ lhs:FourDigitDecimalPrecisionValue, _ rhs:FourDigitDecimalPrecisionValue) -> FourDigitDecimalPrecisionValue {
+		return FourDigitDecimalPrecisionValue(RAW_native:lhs.RAW_native() + rhs.RAW_native())
+	}
+	public static func += (_ lhs:inout FourDigitDecimalPrecisionValue, _ rhs:FourDigitDecimalPrecisionValue) {
+		lhs = lhs + rhs
+	}
+}
+
+extension Double {
+	public init(_ rawValue:FourDigitDecimalPrecisionValue) {
+		self = Double(rawValue.RAW_native()) / 10000.0
+	}
+}
+
 public typealias EncodedByte = RAW_byte
 
 @RAW_staticbuff(concat:bedrock.Date.Seconds.self)
 @MDB_comparable()
-public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConvertible {
+public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConvertible, Hashable {
+	/// represents the time in seconds since the Unix epoch (January 1, 1970)
 	private let seconds:bedrock.Date.Seconds
 	public init() {
-		self.seconds = bedrock.Date.Seconds(localTime:false)
+		seconds = bedrock.Date.Seconds(localTime:false)
+	}
+	private init(seconds unixTime:bedrock.Date.Seconds) {
+		seconds = unixTime
 	}
 	public var debugDescription:String {
 		return "\(seconds.timeIntervalSinceUnixDate())"
 	}
+	public static func + (_ lhs:DateUTC, _ rhs:UInt64) -> DateUTC {
+		return Self(seconds:lhs.seconds + rhs)
+	}
+	public static func - (_ lhs:DateUTC, _ rhs:UInt64) -> DateUTC {
+		return Self(seconds:lhs.seconds - rhs)
+	}
 }
 
-public struct MetadataDB {
+public struct MetadataDB:Sendable {
 	enum Metadatas:EncodedString {
 		case ambientWeather_lastCumulativeRainValue = "ambientWeather_lastCumulativeRainValue"
 	}
@@ -63,8 +100,47 @@ public struct MetadataDB {
 		try newTrans.commit()
 	}
 
+	public func shouldProceedWithProcessing(deviceIdentifier:EncodedString, logLevel:Logger.Level) throws -> Bool {
+		var logger = log
+		logger.logLevel = logLevel
+		logger[metadataKey:"deviceIdentifier"] = "\(deviceIdentifier)"
+		logger.trace("checking if we should proceed with processing for device", metadata:["deviceIdentifier":"\(deviceIdentifier)"])
+		
+		let newTrans = try Transaction(env:env, readOnly:false)
+		logger.trace("successfully opened sub-transaction for checking device identifier")
+		do {
+			let foundKey = try metadata.loadEntry(key:deviceIdentifier, as:EncodedString.self, tx:newTrans)
+			logger.trace("found existing database entry for device identifier", metadata:["foundKey":"\(foundKey)"])
+			if foundKey == deviceIdentifier {
+				logger.debug("device identifier matches the existing entry, proceeding with processing")
+			} else {
+				logger.warning("device identifier does not match the existing entry, not proceeding with processing", metadata:["existingKey":"\(foundKey)"])
+				return false
+			}
+		} catch LMDBError.notFound {
+			logger.debug("no existing entry found for device identifier, the device id will be stored and used as the exclusive allowed identifier for this device")
+			try metadata.setEntry(key:deviceIdentifier, value:deviceIdentifier, flags:[], tx:newTrans)
+		}
+		try newTrans.commit()
+		return true
+	}
+
+	public func clearCumulativeRainValue(logLevel:Logger.Level) throws {
+		var logger = log
+		logger.logLevel = logLevel
+		logger.trace("clearing cumulative rain value")
+		
+		let newTrans = try Transaction(env:env, readOnly:false)
+		logger.trace("successfully opened sub-transaction for clearing cumulative rain value")
+		try metadata.deleteEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, tx:newTrans)
+		logger.trace("successfully cleared cumulative rain value")
+		try newTrans.commit()
+		logger.debug("successfully committed sub-transaction")
+	}
+
 	/// converts a cumulative rain value into an incremental value. if the value has incremented, the `afterSwap` closure will be called with the increment value. this closure can be used to store the new incremental value. the new cumulative rain value will not be stored into the database until the handler returns without throwing. if the handler function throws, the cumulative rain value will not be updated and the old value will remain in the database.
-	public func exchangeLastCumulativeRainValue(tx:borrowing Transaction, _ inputCumulativeRain:EncodedDouble, afterSwap:(EncodedDouble) throws -> Void, logLevel:Logger.Level) throws {
+	public func exchangeLastCumulativeRainValue(tx:borrowing Transaction, _ inputCumulativeRain:Double, afterSwap:(FourDigitDecimalPrecisionValue) throws -> Void, logLevel:Logger.Level) throws {
+		let inputCumulativeRain = FourDigitDecimalPrecisionValue(inputCumulativeRain)
 		var logger = log
 		logger.logLevel = logLevel
 		logger[metadataKey:"inputCumulativeRain"] = "\(inputCumulativeRain)"
@@ -74,22 +150,22 @@ public struct MetadataDB {
 		logger.trace("opening new transaction to read and write metadata")
 		let newTrans = try Transaction(env:env, readOnly:false, parent:tx)
 		logger.trace("successfully opened sub-transaction for reading and writing metadata")
-		let oldValue:EncodedDouble
+		let oldValue:FourDigitDecimalPrecisionValue
 		do {
-			oldValue = try metadata.loadEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, as:EncodedDouble.self, tx:newTrans)!
+			oldValue = try metadata.loadEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, as:FourDigitDecimalPrecisionValue.self, tx:newTrans)!
 			logger.trace("successfully loaded old cumulative rain value", metadata:["oldValue":"\(oldValue)"])
 		} catch LMDBError.notFound {
 			logger.debug("no previous cumulative rain value found, assuming it is 0.0")
-			oldValue = 0.0
+			oldValue = 0
 		}
 		try metadata.setEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, value:inputCumulativeRain, flags:[], tx:newTrans)
 		logger.debug("successfully set new cumulative rain value", metadata:["newValue":"\(inputCumulativeRain)"])
 		if oldValue < inputCumulativeRain {
 			// the new value increased. calculate the difference and call the afterSwap closure
 			logger.trace("old value is less than input cumulative rain. calling afterSwap closure with the difference")
-			try afterSwap(EncodedDouble(RAW_native:inputCumulativeRain.RAW_native() - oldValue.RAW_native()))
+			try afterSwap(inputCumulativeRain - oldValue)
 		} else if oldValue > inputCumulativeRain {
-			if inputCumulativeRain > 0.0 {
+			if inputCumulativeRain > 0 {
 				logger.trace("old value is greater than input cumulative rain but input cumulative rain is greater than 0.0. calling afterSwap closure with the difference")
 				// the delta is the actual value of the input cumulative rain. this should never happen theoretically but in absolute technicality, it might be possible, so I will handle it as best as I can. if the input cumulative rain is less than the old value but above 0, we will assume the input cumulative rain is the complete increment.
 				try afterSwap(inputCumulativeRain)
@@ -192,7 +268,6 @@ public struct WxDB:Sendable {
 		logger.logLevel = logLevel
 		logger[metadataKey:"store_date"] = "\(date)"
 		logger.trace("scribing new data")
-
 
 		let newTrans = try Transaction(env:env, readOnly:false)
 		

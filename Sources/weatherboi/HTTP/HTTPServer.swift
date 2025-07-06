@@ -1,6 +1,7 @@
 import Hummingbird
 import ServiceLifecycle
 import Logging
+import struct QuickLMDB.Transaction
 
 struct HTTPServer:Service {
 	/// The HTTP server context used for the web server.
@@ -81,8 +82,12 @@ struct HTTPServer:Service {
 	Query parameter: rtfreq = 5
 	*/
 	public struct AmbientWeatherResponder:HTTPResponder {
+		private let metadb:MetadataDB
+		private let raindb:RainDB
 		private let wxdb:WxDB
-		public init(weatherDatabase:WxDB) {
+		public init(metadataDatabase:MetadataDB, rainDatabase:RainDB, weatherDatabase:WxDB) {
+			metadb = metadataDatabase
+			raindb = rainDatabase
 			wxdb = weatherDatabase
 		}
 	    public func respond(to request:HummingbirdCore.Request, context:HTTPServer.Context) async throws -> HummingbirdCore.Response {
@@ -103,6 +108,8 @@ struct HTTPServer:Service {
 			var indoorTemp:Substring? = nil
 			var indoorHumidity:Substring? = nil
 			var baroAbs:Substring? = nil
+
+			var rainEvent:Double? = nil
 			
 			var batteryValues = [String:String]()
 			let batteryKeyRegex = try Regex("^batt")
@@ -111,40 +118,55 @@ struct HTTPServer:Service {
 					continue queryLoop
 				}
 				switch curQueryKey {
+					case "PASSKEY":
+						// this is the passkey, we don't need to do anything with it
+						logger.trace("received passkey: '\(curQueryValue)'")
+						guard try metadb.shouldProceedWithProcessing(deviceIdentifier:EncodedString(String(curQueryValue)), logLevel:.info) == true else {
+							logger.warning("passkey '\(curQueryValue)' is not valid, rejecting request")
+							return HummingbirdCore.Response(status:.unauthorized)
+						}
 					case "windspeedmph":
 						windspeed = curQueryValue
-						logger.trace("windspeed: \(String(describing:windspeed!))")
+						logger.trace("windspeed: '\(String(describing:windspeed!))'")
 					case "winddir":
 						winddir = curQueryValue
-						logger.trace("winddir: \(String(describing:winddir!))")
+						logger.trace("winddir: '\(String(describing:winddir!))'")
 					case "windgustmph":
 						windgust = curQueryValue
-						logger.trace("windgust: \(String(describing:windgust!))")
+						logger.trace("windgust: '\(String(describing:windgust!))'")
 					case "tempf":
 						outdoorTemp = curQueryValue
-						logger.trace("outdoor temp: \(String(describing:outdoorTemp!))")
+						logger.trace("outdoor temp: '\(String(describing:outdoorTemp!))'")
 					case "humidity":
 						outdoorHumidity = curQueryValue
-						logger.trace("outdoor humidity: \(String(describing:outdoorHumidity!))")
+						logger.trace("outdoor humidity: '\(String(describing:outdoorHumidity!))'")
 					case "uv":
 						uvIndex = curQueryValue
-						logger.trace("UV index: \(String(describing:uvIndex!))")
+						logger.trace("UV index: '\(String(describing:uvIndex!))'")
 					case "solarradiation":
 						solarRadiation = curQueryValue
-						logger.trace("solar radiation: \(String(describing:solarRadiation!))")
+						logger.trace("solar radiation: '\(String(describing:solarRadiation!))'")
 					case "tempinf":
 						indoorTemp = curQueryValue
-						logger.trace("indoor temp: \(String(describing:indoorTemp!))")
+						logger.trace("indoor temp: '\(String(describing:indoorTemp!))'")
 					case "humidityin":
 						indoorHumidity = curQueryValue
-						logger.trace("indoor humidity: \(String(describing:indoorHumidity!))")
+						logger.trace("indoor humidity: '\(String(describing:indoorHumidity!))'")
 					case "baromabsin":
 						baroAbs = curQueryValue
-						logger.trace("barometric pressure: \(String(describing:baroAbs!))")
+						logger.trace("barometric pressure: '\(String(describing:baroAbs!))'")
+					case "eventrainin":
+						// this is the rain event value
+						if let rainValue = Double(curQueryValue) {
+							rainEvent = rainValue
+							logger.trace("rain event: '\(String(describing:rainEvent!))'")
+						} else {
+							logger.warning("invalid rain event value: '\(curQueryValue)'")
+						}
 					default:
 						if curQueryKey.contains(batteryKeyRegex) == true {
 							batteryValues[String(curQueryKey)] = String(curQueryValue)
-							logger.trace("battery value for key '\(curQueryKey)': \(String(describing:curQueryValue))")
+							logger.trace("battery value for key '\(curQueryKey)': '\(String(describing:curQueryValue))'")
 						}
 				}
 			}
@@ -152,9 +174,29 @@ struct HTTPServer:Service {
 			let windData = WeatherReport.Wind(windDirection:winddir, windSpeed:windspeed, windGust:windgust)
 			let outdoorConditions = WeatherReport.OutdoorConditions(temp:outdoorTemp, humidity:outdoorHumidity, uvIndex:uvIndex, solarRadiation:solarRadiation)
 			let indoorConditions = WeatherReport.IndoorConditions(temp:indoorTemp, humidity:indoorHumidity, baro:baroAbs)
-			
 			let weatherReport = WeatherReport(wind:windData, outdoorConditions:outdoorConditions, indoorConditions:indoorConditions)
 			
+			// document the data for the main database and the rain database
+			let dateNow = DateUTC()
+			func transactData() throws {
+				let newTransaction = try Transaction(env:metadb.env, readOnly:false)
+				if rainEvent != nil {
+					// we have a rain event, so we need to update the rain database
+					try metadb.exchangeLastCumulativeRainValue(tx:newTransaction, rainEvent!, afterSwap: { newIncrementalRainValue in
+						try raindb.scribeNewIncrementValue(date:dateNow, increment:newIncrementalRainValue, logLevel:logger.logLevel)
+					}, logLevel:logger.logLevel)
+				}
+				// write the battery data to the metadata database
+				try! metadb.storeBatteryData(tx:newTransaction, batteryValues, logLevel:logger.logLevel)
+				try newTransaction.commit()
+				try wxdb.scribeNewData(date:dateNow, weatherReport, logLevel:logger.logLevel)
+			}
+			do {
+				try transactData()
+			} catch {
+				logger.error("failed to write data to the database: \(error)")
+				return HummingbirdCore.Response(status:.internalServerError)
+			}
 			return HummingbirdCore.Response(status:.ok)
 	    }
 	}
@@ -163,13 +205,17 @@ struct HTTPServer:Service {
 	let appv4:Application<RouterResponder<Context>>
 	let appv6:Application<RouterResponder<Context>>
 	let weatherDatabase:WxDB
-
-	public init(eventLoopGroupProvider:EventLoopGroupProvider, port:Int, wxDB:WxDB, logLevel:Logger.Level) throws {
+	let metadataDatabase:MetadataDB
+	let rainDatabase:RainDB
+	/// initialize the HTTP server with the given parameters.
+	public init(eventLoopGroupProvider:EventLoopGroupProvider, port:Int, metadataDB:MetadataDB, rainDB:RainDB, wxDB:WxDB, logLevel:Logger.Level) throws {
 		var makeLogger = Logger(label:"weatherboi.http")
 		makeLogger.logLevel = logLevel
 		log = makeLogger
 
 		weatherDatabase = wxDB
+		metadataDatabase = metadataDB
+		rainDatabase = rainDB
 
 		let bindAddressV4 = BindAddress.hostname("0.0.0.0", port:port)
 		let bindAddressV6 = BindAddress.hostname("::", port:port)
@@ -179,7 +225,7 @@ struct HTTPServer:Service {
 
 		let makeRouter = Router(context:Context.self)
 
-		let weatherStationResponder = AmbientWeatherResponder(weatherDatabase:weatherDatabase)
+		let weatherStationResponder = AmbientWeatherResponder(metadataDatabase:metadataDatabase, rainDatabase:rainDatabase, weatherDatabase:weatherDatabase)
 		makeRouter.on("/brand/ambientweather", method:.get, responder:weatherStationResponder)
 
 		appv4 = Hummingbird.Application(router:makeRouter, configuration:appConfigurationV4, eventLoopGroupProvider:eventLoopGroupProvider, logger:makeLogger)

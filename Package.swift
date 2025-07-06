@@ -22,7 +22,8 @@ let package = Package(
 		.package(url:"https://github.com/swift-server/swift-service-lifecycle.git", "2.6.3"..<"3.0.0"),
 		.package(url:"https://github.com/apple/swift-argument-parser.git", "1.5.0"..<"2.0.0"),
 		.package(url:"https://github.com/tannerdsilva/QuickLMDB.git", "11.1.0"..<"12.0.0"),
-		.package(url:"https://github.com/tannerdsilva/bedrock.git", "3.1.1"..<"4.0.0")
+		// .package(url:"https://github.com/tannerdsilva/bedrock.git", "4.0.0"..<"5.0.0")
+		.package(name:"bedrock", path:"../bedrock"),
 	],
     targets: [
 		.plugin(
