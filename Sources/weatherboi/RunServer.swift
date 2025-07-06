@@ -25,7 +25,7 @@ extension CLI {
 			let metadataDB = try MetadataDB(base:homeDirectory, logLevel:.trace)
 			let rainDB = try RainDB(base:homeDirectory, logLevel:.trace)
 			let mainDB = try WxDB(base:homeDirectory, logLevel:.trace)
-			let server = try HTTPServer(eventLoopGroupProvider:.shared(eventLoopGroup), port:Int(port), metadataDB:metadataDB, rainDB:rainDB, wxDB:mainDB, logLevel:.info)
+			let server = try HTTPServer(eventLoopGroupProvider:.shared(eventLoopGroup), port:Int(port), metadataDB:metadataDB, rainDB:rainDB, wxDB:mainDB, logLevel:.trace)
 			try await ServiceGroup(services:[server], gracefulShutdownSignals:[.sigterm, .sigint], logger:Logger(label:"weatherboi.server")).run()
 		}
 	}
