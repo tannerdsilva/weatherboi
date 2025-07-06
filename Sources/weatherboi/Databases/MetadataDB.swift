@@ -152,11 +152,22 @@ public struct MetadataDB:Sendable {
 		logger.trace("successfully opened sub-transaction for reading and writing metadata")
 		let oldValue:FourDigitDecimalPrecisionValue
 		do {
-			oldValue = try metadata.loadEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, as:FourDigitDecimalPrecisionValue.self, tx:newTrans)!
+			guard let ov = try metadata.loadEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, as:FourDigitDecimalPrecisionValue.self, tx:newTrans) else {
+				try Metadatas.ambientWeather_lastCumulativeRainValue.rawValue.MDB_access { mdbVal in
+					let asMDB_val:MDB_val = try metadata.loadEntry(key:mdbVal, as:MDB_val.self, tx:newTrans)
+					logger.critical("no previous cumulative rain value found, assuming it the current rain cumulative value", metadata:["asMDB_val":"\(asMDB_val)"])
+					logger.critical("length: \(asMDB_val.mv_size)")
+					for byte in asMDB_val {
+						logger.critical("byte: \(byte)")
+					}
+				}
+				fatalError("no previous cumulative rain value found, assuming it the current rain cumulative value")
+			}
+			oldValue = ov
 			logger.trace("successfully loaded old cumulative rain value", metadata:["oldValue":"\(oldValue)"])
 		} catch LMDBError.notFound {
-			logger.debug("no previous cumulative rain value found, assuming it is 0.0")
-			oldValue = 0
+			logger.debug("no previous cumulative rain value found, assuming it the current rain cumulative value")
+			oldValue = inputCumulativeRain // if no previous value is found, we assume the current cumulative rain value is the old value
 		}
 		try metadata.setEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, value:inputCumulativeRain, flags:[], tx:newTrans)
 		logger.debug("successfully set new cumulative rain value", metadata:["newValue":"\(inputCumulativeRain)"])
