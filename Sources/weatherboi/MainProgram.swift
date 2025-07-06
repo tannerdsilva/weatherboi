@@ -57,8 +57,6 @@ struct CLI:AsyncParsableCommand {
 				abstract:"a subcommand for scribing rain data."
 			)
 
-			
-
 			@Argument
 			var cumulativeAmount:Double
 
@@ -86,7 +84,7 @@ struct CLI:AsyncParsableCommand {
 
 			func run() throws {
 				let logger = Logger(label:"weatherboi.rain.current-rate")
-				let homeDirectory = Path(FileManager.default.homeDirectoryForCurrentUser.path)
+				let homeDirectory = Path(databasePath)
 				let rainDB = try RainDB(base:homeDirectory, logLevel:.trace)
 				let currentRate = try rainDB.calculateRainPerHour(at:DateUTC(), logLevel:.trace)
 				logger.info("current rain rate: \(currentRate)")
