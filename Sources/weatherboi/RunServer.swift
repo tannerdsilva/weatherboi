@@ -16,6 +16,12 @@ extension CLI {
 		@Option(help:"the path to the database directory, defaults to the user's home directory")
 		var databasePath:String = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("weatherboi_lmdb").path
 
+		@Argument(help:"the ipv4 address to bind the http server for listening on")
+		var bindV4:String
+
+		@Argument(help:"the ipv6 address to bind the http server for listening on")
+		var bindV6:String
+
 		@Argument(help:"the port to bind the http server for listening on")
 		var port:UInt16
 
@@ -25,7 +31,7 @@ extension CLI {
 			let metadataDB = try MetadataDB(base:homeDirectory, logLevel:.trace)
 			let rainDB = try RainDB(base:homeDirectory, logLevel:.trace)
 			let mainDB = try WxDB(base:homeDirectory, logLevel:.trace)
-			let server = try HTTPServer(eventLoopGroupProvider:.shared(eventLoopGroup), port:Int(port), metadataDB:metadataDB, rainDB:rainDB, wxDB:mainDB, logLevel:.trace)
+			let server = try HTTPServer(eventLoopGroupProvider:.shared(eventLoopGroup), bindV4:bindV4, bindV6:bindV6, port:Int(port), metadataDB:metadataDB, rainDB:rainDB, wxDB:mainDB, logLevel:.trace)
 			try await ServiceGroup(services:[server], gracefulShutdownSignals:[.sigterm, .sigint], logger:Logger(label:"weatherboi.server")).run()
 		}
 	}

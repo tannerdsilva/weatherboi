@@ -208,7 +208,7 @@ struct HTTPServer:Service {
 	let metadataDatabase:MetadataDB
 	let rainDatabase:RainDB
 	/// initialize the HTTP server with the given parameters.
-	public init(eventLoopGroupProvider:EventLoopGroupProvider, port:Int, metadataDB:MetadataDB, rainDB:RainDB, wxDB:WxDB, logLevel:Logger.Level) throws {
+	public init(eventLoopGroupProvider:EventLoopGroupProvider, bindV4:String, bindV6:String, port:Int, metadataDB:MetadataDB, rainDB:RainDB, wxDB:WxDB, logLevel:Logger.Level) throws {
 		var makeLogger = Logger(label:"weatherboi.http")
 		makeLogger.logLevel = logLevel
 		log = makeLogger
@@ -217,8 +217,8 @@ struct HTTPServer:Service {
 		metadataDatabase = metadataDB
 		rainDatabase = rainDB
 
-		let bindAddressV4 = BindAddress.hostname("0.0.0.0", port:port)
-		let bindAddressV6 = BindAddress.hostname("::", port:port)
+		let bindAddressV4 = BindAddress.hostname(bindV4, port:port)
+		let bindAddressV6 = BindAddress.hostname(bindV6, port:port)
 		
 		let appConfigurationV4 = Hummingbird.ApplicationConfiguration(address:bindAddressV4, reuseAddress:true)
 		let appConfigurationV6 = Hummingbird.ApplicationConfiguration(address:bindAddressV6, reuseAddress:true)
