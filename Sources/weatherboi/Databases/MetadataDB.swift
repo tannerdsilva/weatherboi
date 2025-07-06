@@ -83,6 +83,7 @@ public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConverti
 public struct MetadataDB:Sendable {
 	enum Metadatas:EncodedString {
 		case ambientWeather_lastCumulativeRainValue = "ambientWeather_lastCumulativeRainValue"
+		case batteryData = "batteryData"
 	}
 	private let log:Logger
 	public let env:Environment
@@ -195,7 +196,7 @@ public struct MetadataDB:Sendable {
 		logger.trace("successfully opened sub-transaction for storing battery data")
 		let encodedBytes = try QuickJSON.encode(batteryData)
 		logger.trace("successfully encoded battery data into JSON bytes")
-		try metadata.setEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, value:encodedBytes, flags:[], tx:newTrans)
+		try metadata.setEntry(key:Metadatas.batteryData.rawValue, value:encodedBytes, flags:[], tx:newTrans)
 		logger.trace("successfully stored battery data into database")
 		try newTrans.commit()
 		logger.debug("successfully committed sub-transaction")
