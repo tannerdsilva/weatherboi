@@ -2,11 +2,11 @@ public struct WeatherReport {
 	/// the container for wind data
 	public struct Wind {
 		/// the direction of the wind in degrees. 0 is north, 90 is east, 180 is south, and 270 is west.
-		public let windDirection:EncodedDouble?
+		public let windDirection:EncodedUInt16?
 		/// the speed of the wind in miles per hour
-		public let windSpeed:EncodedDouble?
+		public let windSpeed:EncodedUInt16?
 		/// the gust speed of the wind in miles per hour
-		public let windGust:EncodedDouble?
+		public let windGust:EncodedUInt16?
 	}
 	/// the container for outdoor conditions
 	public struct OutdoorConditions {
@@ -39,18 +39,18 @@ public struct WeatherReport {
 extension WeatherReport.Wind {
 	/// primary initializer for the wind data as it comes from the http server
 	public init(windDirection wdInput:Substring?, windSpeed wsInput:Substring?, windGust wgInput:Substring?) {
-		if let wd = wdInput, let wdDouble = Double(wd) {
-			windDirection = EncodedDouble(RAW_native:wdDouble)
+		if let wd = wdInput, let wdDouble = UInt16(wd) {
+			windDirection = EncodedUInt16(RAW_native:wdDouble)
 		} else {
 			windDirection = nil
 		}
-		if let ws = wsInput, let wsDouble = Double(ws) {
-			windSpeed = EncodedDouble(RAW_native:wsDouble)
+		if let ws = wsInput, let wsDouble = UInt16(ws) {
+			windSpeed = EncodedUInt16(RAW_native:wsDouble)
 		} else {
 			windSpeed = nil
 		}
-		if let wg = wgInput, let wgDouble = Double(wg) {
-			windGust = EncodedDouble(RAW_native:wgDouble)
+		if let wg = wgInput, let wgDouble = UInt16(wg) {
+			windGust = EncodedUInt16(RAW_native:wgDouble)
 		} else {
 			windGust = nil
 		}

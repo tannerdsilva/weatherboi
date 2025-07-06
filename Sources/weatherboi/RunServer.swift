@@ -1,7 +1,6 @@
 import ArgumentParser
 import Hummingbird
 import NIO
-import class Foundation.FileManager
 import ServiceLifecycle
 import Logging
 import bedrock
@@ -14,7 +13,7 @@ extension CLI {
 		)
 
 		@Option(help:"the path to the database directory, defaults to the user's home directory")
-		var databasePath:String = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("weatherboi_lmdb").path
+		var databasePath:String = CLI.defaultDBBasePath()
 
 		@Argument(help:"the ipv4 address to bind the http server for listening on")
 		var bindV4:String

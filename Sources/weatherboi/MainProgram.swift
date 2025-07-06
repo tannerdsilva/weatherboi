@@ -6,6 +6,10 @@ import struct QuickLMDB.Transaction
 
 @main
 struct CLI:AsyncParsableCommand {
+	static func defaultDBBasePath() -> String {
+		return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("weatherboi_lmdb").path
+	}
+
 	static let configuration = CommandConfiguration(
 		commandName:"weatherboi",
 		abstract:"a highly efficient daemon for capturing, storing, and redistributing data from on-premises weather stations.",
@@ -34,6 +38,9 @@ struct CLI:AsyncParsableCommand {
 				abstract:"a subcommand for clearing rain data."
 			)
 
+			@Option(help:"the path to the database directory, defaults to the user's home directory")
+			var databasePath:String = CLI.defaultDBBasePath()
+
 			func run() throws {
 				let logger = Logger(label:"weatherboi.rain.clear")
 				let homeDirectory = Path(FileManager.default.homeDirectoryForCurrentUser.path)
@@ -49,6 +56,8 @@ struct CLI:AsyncParsableCommand {
 				commandName:"scribe",
 				abstract:"a subcommand for scribing rain data."
 			)
+
+			
 
 			@Argument
 			var cumulativeAmount:Double
@@ -71,6 +80,9 @@ struct CLI:AsyncParsableCommand {
 				commandName:"current-rate",
 				abstract:"a subcommand for calculating the current rain rate."
 			)
+
+			@Option(help:"the path to the database directory, defaults to the user's home directory")
+			var databasePath:String = CLI.defaultDBBasePath()
 
 			func run() throws {
 				let logger = Logger(label:"weatherboi.rain.current-rate")

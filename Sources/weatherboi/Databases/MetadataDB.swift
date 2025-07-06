@@ -29,29 +29,50 @@ public struct EncodedDouble:Sendable, ExpressibleByFloatLiteral, Equatable, Comp
 	}
 }
 
+@RAW_staticbuff(bytes:2)
+@RAW_staticbuff_fixedwidthinteger_type<UInt16>(bigEndian:true)
+@MDB_comparable()
+public struct EncodedUInt16:Sendable, ExpressibleByIntegerLiteral, Equatable, Comparable, CustomDebugStringConvertible {
+	public var debugDescription:String {
+		return "\(RAW_native())"
+	}
+	public init(_ value:UInt16) {
+		self.init(RAW_native:value)
+	}
+	public static func - (_ lhs:EncodedUInt16, _ rhs:EncodedUInt16) -> EncodedUInt16 {
+		return EncodedUInt16(RAW_native:lhs.RAW_native() - rhs.RAW_native())
+	}
+	public static func + (_ lhs:EncodedUInt16, _ rhs:EncodedUInt16) -> EncodedUInt16 {
+		return EncodedUInt16(RAW_native:lhs.RAW_native() + rhs.RAW_native())
+	}
+	public static func += (_ lhs:inout EncodedUInt16, _ rhs:EncodedUInt16) {
+		lhs = lhs + rhs
+	}
+}
+
 @RAW_staticbuff(bytes:4)
 @RAW_staticbuff_fixedwidthinteger_type<UInt32>(bigEndian:true)
 @MDB_comparable()
-public struct FourDigitDecimalPrecisionValue:Sendable, ExpressibleByIntegerLiteral, Equatable, Comparable, CustomDebugStringConvertible {
+public struct UnsignedFourDigitDecimalValue:Sendable, ExpressibleByIntegerLiteral, Equatable, Comparable, CustomDebugStringConvertible {
 	public var debugDescription:String {
 		return "\(Double(RAW_native()) / 10000.0)"
 	}
 	public init(_ value:Double) {
 		self.init(RAW_native:UInt32(value * 10000.0))
 	}
-	public static func - (_ lhs:FourDigitDecimalPrecisionValue, _ rhs:FourDigitDecimalPrecisionValue) -> FourDigitDecimalPrecisionValue {
-		return FourDigitDecimalPrecisionValue(RAW_native:lhs.RAW_native() - rhs.RAW_native())
+	public static func - (_ lhs:UnsignedFourDigitDecimalValue, _ rhs:UnsignedFourDigitDecimalValue) -> UnsignedFourDigitDecimalValue {
+		return UnsignedFourDigitDecimalValue(RAW_native:lhs.RAW_native() - rhs.RAW_native())
 	}
-	public static func + (_ lhs:FourDigitDecimalPrecisionValue, _ rhs:FourDigitDecimalPrecisionValue) -> FourDigitDecimalPrecisionValue {
-		return FourDigitDecimalPrecisionValue(RAW_native:lhs.RAW_native() + rhs.RAW_native())
+	public static func + (_ lhs:UnsignedFourDigitDecimalValue, _ rhs:UnsignedFourDigitDecimalValue) -> UnsignedFourDigitDecimalValue {
+		return UnsignedFourDigitDecimalValue(RAW_native:lhs.RAW_native() + rhs.RAW_native())
 	}
-	public static func += (_ lhs:inout FourDigitDecimalPrecisionValue, _ rhs:FourDigitDecimalPrecisionValue) {
+	public static func += (_ lhs:inout UnsignedFourDigitDecimalValue, _ rhs:UnsignedFourDigitDecimalValue) {
 		lhs = lhs + rhs
 	}
 }
 
 extension Double {
-	public init(_ rawValue:FourDigitDecimalPrecisionValue) {
+	public init(_ rawValue:UnsignedFourDigitDecimalValue) {
 		self = Double(rawValue.RAW_native()) / 10000.0
 	}
 }
@@ -140,8 +161,8 @@ public struct MetadataDB:Sendable {
 	}
 
 	/// converts a cumulative rain value into an incremental value. if the value has incremented, the `afterSwap` closure will be called with the increment value. this closure can be used to store the new incremental value. the new cumulative rain value will not be stored into the database until the handler returns without throwing. if the handler function throws, the cumulative rain value will not be updated and the old value will remain in the database.
-	public func exchangeLastCumulativeRainValue(tx:borrowing Transaction, _ inputCumulativeRain:Double, afterSwap:(FourDigitDecimalPrecisionValue) throws -> Void, logLevel:Logger.Level) throws {
-		let inputCumulativeRain = FourDigitDecimalPrecisionValue(inputCumulativeRain)
+	public func exchangeLastCumulativeRainValue(tx:borrowing Transaction, _ inputCumulativeRain:Double, afterSwap:(UnsignedFourDigitDecimalValue) throws -> Void, logLevel:Logger.Level) throws {
+		let inputCumulativeRain = UnsignedFourDigitDecimalValue(inputCumulativeRain)
 		var logger = log
 		logger.logLevel = logLevel
 		logger[metadataKey:"inputCumulativeRain"] = "\(inputCumulativeRain)"
@@ -151,9 +172,9 @@ public struct MetadataDB:Sendable {
 		logger.trace("opening new transaction to read and write metadata")
 		let newTrans = try Transaction(env:env, readOnly:false, parent:tx)
 		logger.trace("successfully opened sub-transaction for reading and writing metadata")
-		let oldValue:FourDigitDecimalPrecisionValue
+		let oldValue:UnsignedFourDigitDecimalValue
 		do {
-			guard let ov = try metadata.loadEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, as:FourDigitDecimalPrecisionValue.self, tx:newTrans) else {
+			guard let ov = try metadata.loadEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, as:UnsignedFourDigitDecimalValue.self, tx:newTrans) else {
 				try Metadatas.ambientWeather_lastCumulativeRainValue.rawValue.MDB_access { mdbVal in
 					let asMDB_val:MDB_val = try metadata.loadEntry(key:mdbVal, as:MDB_val.self, tx:newTrans)
 					logger.critical("no previous cumulative rain value found, assuming it the current rain cumulative value", metadata:["asMDB_val":"\(asMDB_val)"])
@@ -227,9 +248,9 @@ public struct WxDB:Sendable {
 	let log:Logger
 
 	// wind
-	let winddir:Database.Strict<DateUTC, EncodedDouble>
-	let windspeed:Database.Strict<DateUTC, EncodedDouble>
-	let windgust:Database.Strict<DateUTC, EncodedDouble>
+	let winddir:Database.Strict<DateUTC, EncodedUInt16>
+	let windspeed:Database.Strict<DateUTC, EncodedUInt16>
+	let windgust:Database.Strict<DateUTC, EncodedUInt16>
 	// outdoor conditions
 	let tempOut:Database.Strict<DateUTC, EncodedDouble>
 	let humidityOut:Database.Strict<DateUTC, EncodedDouble>
@@ -259,9 +280,9 @@ public struct WxDB:Sendable {
 		// create the initial transaction
 		let newTrans = try Transaction(env:env, readOnly:false)
 		// initialize wind databases
-		winddir = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.winddir.rawValue, flags:[.create], tx:newTrans)
-		windspeed = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.windspeedmph.rawValue, flags:[.create], tx:newTrans)
-		windgust = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.windgustmph.rawValue, flags:[.create], tx:newTrans)
+		winddir = try Database.Strict<DateUTC, EncodedUInt16>(env:env, name:Databases.winddir.rawValue, flags:[.create], tx:newTrans)
+		windspeed = try Database.Strict<DateUTC, EncodedUInt16>(env:env, name:Databases.windspeedmph.rawValue, flags:[.create], tx:newTrans)
+		windgust = try Database.Strict<DateUTC, EncodedUInt16>(env:env, name:Databases.windgustmph.rawValue, flags:[.create], tx:newTrans)
 		// initialize outdoor conditions databases
 		tempOut = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.tempOutF.rawValue, flags:[.create], tx:newTrans)
 		humidityOut = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.humidityOut.rawValue, flags:[.create], tx:newTrans)
