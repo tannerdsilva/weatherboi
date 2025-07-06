@@ -1,43 +1,122 @@
 import QuickLMDB
 import RAW
 import bedrock
+import Logging
+import QuickJSON
 
 @RAW_convertible_string_type<UTF8>(backing:RAW_byte.self)
 @MDB_comparable()
-public struct EncodedString:Sendable {}
+public struct EncodedString:Sendable, Equatable, Hashable, Comparable, ExpressibleByStringLiteral, CustomDebugStringConvertible {
+	public var debugDescription:String {
+		return String(self)
+	}
+}
+extension EncodedString:RawRepresentable {
+	public init(rawValue:String) {
+		self.init(rawValue)
+	}
+	public var rawValue:String {
+		return String(self)
+	}
+}
 
 @RAW_staticbuff(bytes:8)
 @RAW_staticbuff_binaryfloatingpoint_type<Double>()
 @MDB_comparable()
-public struct EncodedDouble:Sendable {}
+public struct EncodedDouble:Sendable, ExpressibleByFloatLiteral, Equatable, Comparable, CustomDebugStringConvertible {
+	public var debugDescription:String {
+		return "\(RAW_native())"
+	}
+}
 
 public typealias EncodedByte = RAW_byte
 
 @RAW_staticbuff(concat:bedrock.Date.Seconds.self)
 @MDB_comparable()
-public struct DateUTC:Sendable {
+public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConvertible {
 	private let seconds:bedrock.Date.Seconds
 	public init() {
 		self.seconds = bedrock.Date.Seconds(localTime:false)
 	}
+	public var debugDescription:String {
+		return "\(seconds.timeIntervalSinceUnixDate())"
+	}
 }
 
 public struct MetadataDB {
-	let env:Environment
-	let db:Database
+	enum Metadatas:EncodedString {
+		case ambientWeather_lastCumulativeRainValue = "ambientWeather_lastCumulativeRainValue"
+	}
+	private let log:Logger
+	public let env:Environment
+	private let metadata:Database
 
-	public init(base:Path) throws {
+	public init(base:Path, logLevel:Logger.Level) throws {
 		let finalPath = base.appendingPathComponent("weatherboidb-metadata.mdb")
-		let memoryMapSize = size_t(finalPath.getFileSize())
-		env = try Environment(path:finalPath.path(), flags:[.noSubDir], mapSize:memoryMapSize, maxReaders:16, maxDBs:8, mode:[.ownerReadWriteExecute, .groupReadExecute, .otherReadExecute])
+		var makeLogger = Logger(label:"\(String(describing:Self.self))")
+		makeLogger.logLevel = logLevel
+		log = makeLogger
+		let memoryMapSize = size_t(finalPath.getFileSize() + 5 * 1024 * 1024 * 1024) // add 5gb to the file size to allow for growth
+		env = try Environment(path:finalPath.path(), flags:[.noSubDir], mapSize:memoryMapSize, maxReaders:16, maxDBs:1, mode:[.ownerReadWriteExecute, .groupReadExecute, .otherReadExecute])
 		let newTrans = try Transaction(env:env, readOnly:false)
-		db = try Database(env:env, name:nil, flags:[.create], tx:newTrans)
+		metadata = try Database(env:env, name:nil, flags:[.create], tx:newTrans)
 		try newTrans.commit()
+	}
+
+	/// converts a cumulative rain value into an incremental value. if the value has incremented, the `afterSwap` closure will be called with the increment value. this closure can be used to store the new incremental value. the new cumulative rain value will not be stored into the database until the handler returns without throwing. if the handler function throws, the cumulative rain value will not be updated and the old value will remain in the database.
+	public func exchangeLastCumulativeRainValue(tx:borrowing Transaction, _ inputCumulativeRain:EncodedDouble, afterSwap:(EncodedDouble) throws -> Void, logLevel:Logger.Level) throws {
+		var logger = log
+		logger.logLevel = logLevel
+		logger[metadataKey:"inputCumulativeRain"] = "\(inputCumulativeRain)"
+		logger.trace("exchanging last cumulative rain value")
+		
+		// open a new transaction to read and write the metadata
+		logger.trace("opening new transaction to read and write metadata")
+		let newTrans = try Transaction(env:env, readOnly:false, parent:tx)
+		logger.trace("successfully opened sub-transaction for reading and writing metadata")
+		let oldValue:EncodedDouble
+		do {
+			oldValue = try metadata.loadEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, as:EncodedDouble.self, tx:newTrans)!
+			logger.trace("successfully loaded old cumulative rain value", metadata:["oldValue":"\(oldValue)"])
+		} catch LMDBError.notFound {
+			logger.debug("no previous cumulative rain value found, assuming it is 0.0")
+			oldValue = 0.0
+		}
+		try metadata.setEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, value:inputCumulativeRain, flags:[], tx:newTrans)
+		logger.debug("successfully set new cumulative rain value", metadata:["newValue":"\(inputCumulativeRain)"])
+		if oldValue < inputCumulativeRain {
+			// the new value increased. calculate the difference and call the afterSwap closure
+			logger.trace("old value is less than input cumulative rain. calling afterSwap closure with the difference")
+			try afterSwap(EncodedDouble(RAW_native:inputCumulativeRain.RAW_native() - oldValue.RAW_native()))
+		} else if oldValue > inputCumulativeRain {
+			if inputCumulativeRain > 0.0 {
+				logger.trace("old value is greater than input cumulative rain but input cumulative rain is greater than 0.0. calling afterSwap closure with the difference")
+				// the delta is the actual value of the input cumulative rain. this should never happen theoretically but in absolute technicality, it might be possible, so I will handle it as best as I can. if the input cumulative rain is less than the old value but above 0, we will assume the input cumulative rain is the complete increment.
+				try afterSwap(inputCumulativeRain)
+			}
+		}
+		try newTrans.commit()
+		logger.debug("successfully committed sub-transaction")
+	}
+
+	public func storeBatteryData(tx:borrowing Transaction, _ batteryData:[String:String], logLevel:Logger.Level) throws {
+		var logger = log
+		logger.logLevel = logLevel
+		logger[metadataKey:"battery_count"] = "\(batteryData.count)"
+		logger.trace("storing battery data as JSON encoded dictionary")
+		let newTrans = try Transaction(env:env, readOnly:false, parent:tx)
+		logger.trace("successfully opened sub-transaction for storing battery data")
+		let encodedBytes = try QuickJSON.encode(batteryData)
+		logger.trace("successfully encoded battery data into JSON bytes")
+		try metadata.setEntry(key:Metadatas.ambientWeather_lastCumulativeRainValue.rawValue, value:encodedBytes, flags:[], tx:newTrans)
+		logger.trace("successfully stored battery data into database")
+		try newTrans.commit()
+		logger.debug("successfully committed sub-transaction")
 	}
 }
 
 /// the weather database.
-public struct WxDB {
+public struct WxDB:Sendable {
 	/// the database names that will be stored in the database
 	public enum Databases:String {
 		// wind
@@ -53,71 +132,12 @@ public struct WxDB {
 		case tempInF = "temp_indoor_f"
 		case humidityIn = "humidity_indoor"
 		case baroIn = "baro_indoor_inhg"
-		// rain
-		case rainEvent = "rain_event_inches"
-		case rainHourly = "rain_hourly_inches"
-		case rainDaily = "rain_daily_inches"
-		case rainWeekly = "rain_weekly_inches"
-		case rainMonthly = "rain_monthly_inches"
-		case rainYearly = "rain_yearly_inches"
 	}
-	public struct WeatherReport {
-		/// the container for wind data
-		public struct Wind {
-			/// the direction of the wind in degrees. 0 is north, 90 is east, 180 is south, and 270 is west.
-			public let windDirection:EncodedDouble?
-			/// the speed of the wind in miles per hour
-			public let windSpeed:EncodedDouble?
-			/// the gust speed of the wind in miles per hour
-			public let windGust:EncodedDouble?
-		}
-		/// the container for outdoor conditions
-		public struct OutdoorConditions {
-			/// the temperature in degrees Fahrenheit
-			public let tempOut:EncodedDouble?
-			/// the humidity percentage
-			public let humidityOut:EncodedDouble?
-			/// the UV index
-			public let uvIndex:EncodedByte?
-			/// the solar radiation in watts per square meter
-			public let solarRadiation:EncodedDouble?
-		}
-		/// the container for indoor conditions
-		public struct IndoorConditions {
-			/// the temperature in degrees Fahrenheit
-			public let tempIn:EncodedDouble?
-			/// the humidity percentage
-			public let humidityIn:EncodedDouble?
-			/// the barometric pressure in inches of mercury
-			public let baro:EncodedDouble?
-		}
-		/// the container for rain data
-		public struct Rain {
-			/// the amount of rain in inches for the current event. a rain event is defined as continuous rain, and resets if accumulated rain is less than 1mm (0.039 inches) in a 24 hour period.
-			public let rainEvent:EncodedDouble?
-			/// the amount of rain in inches for the last hour
-			public let rainHourly:EncodedDouble?
-			/// the amount of rain in inches for the last day
-			public let rainDaily:EncodedDouble?
-			/// the amount of rain in inches for the last week
-			public let rainWeekly:EncodedDouble?
-			/// the amount of rain in inches for the last month
-			public let rainMonthly:EncodedDouble?
-			/// the amount of rain in inches for the last year
-			public let rainYearly:EncodedDouble?
-		}
-		/// stores the wind data for the weather report
-		public let wind:Wind
-		/// stores the outdoor conditions for the weather report
-		public let outdoorConditions:OutdoorConditions
-		/// stores the indoor conditions for the weather report
-		public let indoorConditions:IndoorConditions
-		/// stores the rain data for the weather report
-		public let rain:Rain
-	}
-
 
 	let env:Environment
+
+	let log:Logger
+
 	// wind
 	let winddir:Database.Strict<DateUTC, EncodedDouble>
 	let windspeed:Database.Strict<DateUTC, EncodedDouble>
@@ -131,19 +151,24 @@ public struct WxDB {
 	let tempIn:Database.Strict<DateUTC, EncodedDouble>
 	let humidityIn:Database.Strict<DateUTC, EncodedDouble>
 	let baro:Database.Strict<DateUTC, EncodedDouble>
-	// rain
-	let rainEvent:Database.Strict<DateUTC, EncodedDouble>
-	let rainHourly:Database.Strict<DateUTC, EncodedDouble>
-	let rainDaily:Database.Strict<DateUTC, EncodedDouble>
-	let rainWeekly:Database.Strict<DateUTC, EncodedDouble>
-	let rainMonthly:Database.Strict<DateUTC, EncodedDouble>
-	let rainYearly:Database.Strict<DateUTC, EncodedDouble>
 
-	public init(base:Path) throws {
-		let finalPath = base.appendingPathComponent("weatherboidb-wxdata.mdb")
-		let memoryMapSize = size_t(finalPath.getFileSize() + 50 * 1024 * 1024 * 1024) // add 50gb to the file size to allow for growth
+	public init(base:Path, logLevel:Logger.Level) throws {
+		// initialize the logging infrastructure
+		var makeLogger = Logger(label:"\(String(describing:Self.self))")
+		makeLogger.logLevel = logLevel
+		log = makeLogger
+
+		let finalPath = base.appendingPathComponent("weatherboi-wxdb_conditions.mdb")
+		let memoryMapSize = size_t(finalPath.getFileSize() + 512 * 1024 * 1024 * 1024) // add 512gb to the file size to allow for growth
+		
+		makeLogger.info("initializing weather database", metadata:["path":"\(finalPath.path())", "memoryMapSize":"\(memoryMapSize)"])
+
 		// create the environment
-		env = try Environment(path:finalPath.path(), flags:[.noSubDir], mapSize:memoryMapSize, maxReaders:8, maxDBs:16, mode:[.ownerReadWriteExecute, .groupReadExecute, .otherReadExecute])
+		env = try Environment(path:finalPath.path(), flags:[.noSubDir], mapSize:memoryMapSize, maxReaders:8, maxDBs:24, mode:[.ownerReadWriteExecute, .groupReadExecute, .otherReadExecute])
+		
+		makeLogger.trace("created environment", metadata:["path":"\(finalPath.path())", "memoryMapSize":"\(memoryMapSize)"])
+
+		// create the initial transaction
 		let newTrans = try Transaction(env:env, readOnly:false)
 		// initialize wind databases
 		winddir = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.winddir.rawValue, flags:[.create], tx:newTrans)
@@ -157,134 +182,158 @@ public struct WxDB {
 		// initialize indoor conditions databases
 		tempIn = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.tempInF.rawValue, flags:[.create], tx:newTrans)
 		humidityIn = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.humidityIn.rawValue, flags:[.create], tx:newTrans)
-		baroIn = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.baroIn.rawValue, flags:[.create], tx:newTrans)
-		// initialize rain databases
-		rainEvent = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.rainEvent.rawValue, flags:[.create], tx:newTrans)
-		rainHourly = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.rainHourly.rawValue, flags:[.create], tx:newTrans)
-		rainDaily = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.rainDaily.rawValue, flags:[.create], tx:newTrans)
-		rainWeekly = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.rainWeekly.rawValue, flags:[.create], tx:newTrans)
-		rainMonthly = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.rainMonthly.rawValue, flags:[.create], tx:newTrans)
-		rainYearly = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.rainYearly.rawValue, flags:[.create], tx:newTrans)
+		baro = try Database.Strict<DateUTC, EncodedDouble>(env:env, name:Databases.baroIn.rawValue, flags:[.create], tx:newTrans)
 		// commit the transaction
 		try newTrans.commit()
 	}
 
-	public func scribeNewData(date:DateUTC, _ data:WeatherReport) throws {
+	public func scribeNewData(date:DateUTC, _ data:WeatherReport, logLevel:Logger.Level) throws {
+		var logger = log
+		logger.logLevel = logLevel
+		logger[metadataKey:"store_date"] = "\(date)"
+		logger.trace("scribing new data")
+
+
 		let newTrans = try Transaction(env:env, readOnly:false)
+		
 		// scribe the wind data
 		if data.wind.windDirection != nil {
-			try winddir.setEntry(key:date, value:data.wind.windDirection!, tx:newTrans)
+			try winddir.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write wind direction for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.wind.windDirection!, flags:[.append])
+			}
+			logger.trace("wrote wind direction", metadata:["windDirection":"\(data.wind.windDirection!)"])
 		}
 		if data.wind.windSpeed != nil {
-			try windspeed.setEntry(key:date, value:data.wind.windSpeed!, tx:newTrans)
+			try windspeed.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write wind speed for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.wind.windSpeed!, flags:[.append])
+			}
+			logger.trace("wrote wind speed", metadata:["windSpeed":"\(data.wind.windSpeed!)"])
 		}
 		if data.wind.windGust != nil {
-			try windgust.setEntry(key:date, value:data.wind.windGust!, tx:newTrans)
+			try windgust.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write wind gust for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.wind.windGust!, flags:[.append])
+			}
+			logger.trace("wrote wind gust", metadata:["windGust":"\(data.wind.windGust!)"])
 		}
+
 		// scribe the outdoor conditions
-		if data.outdoorConditions.tempOut != nil {
-			try tempOut.setEntry(key:date, value:data.outdoorConditions.tempOut!, tx:newTrans)
+		if data.outdoorConditions.temp != nil {
+			try tempOut.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write outdoor temperature for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.outdoorConditions.temp!, flags:[.append])
+			}
+			logger.trace("wrote outdoor temperature", metadata:["tempOut":"\(data.outdoorConditions.temp!)"])
 		}
-		if data.outdoorConditions.humidityOut != nil {
-			try humidityOut.setEntry(key:date, value:data.outdoorConditions.humidityOut!, tx:newTrans)
+		if data.outdoorConditions.humidity != nil {
+			try humidityOut.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write outdoor humidity for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.outdoorConditions.humidity!, flags:[.append])
+			}
+			logger.trace("wrote outdoor humidity", metadata:["humidityOut":"\(data.outdoorConditions.humidity!)"])
 		}
 		if data.outdoorConditions.uvIndex != nil {
-			try uvIndex.setEntry(key:date, value:data.outdoorConditions.uvIndex!, tx:newTrans)
+			try uvIndex.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write UV index for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.outdoorConditions.uvIndex!, flags:[.append])
+			}
+			logger.trace("wrote UV index", metadata:["uvIndex":"\(data.outdoorConditions.uvIndex!)"])
 		}
 		if data.outdoorConditions.solarRadiation != nil {
-			try solarRadiation.setEntry(key:date, value:data.outdoorConditions.solarRadiation!, tx:newTrans)
+			try solarRadiation.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write solar radiation for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.outdoorConditions.solarRadiation!, flags:[.append])
+			}
+			logger.trace("wrote solar radiation", metadata:["solarRadiation":"\(data.outdoorConditions.solarRadiation!)"])
 		}
+
 		// scribe the indoor conditions
-		if data.indoorConditions.tempIn != nil {
-			try tempIn.setEntry(key:date, value:data.indoorConditions.tempIn!, tx:newTrans)
+		if data.indoorConditions.temp != nil {
+			try tempIn.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write indoor temperature for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.indoorConditions.temp!, flags:[.append])
+			}
+			logger.trace("wrote indoor temperature", metadata:["tempIn":"\(data.indoorConditions.temp!)"])
 		}
-		if data.indoorConditions.humidityIn != nil {
-			try humidityIn.setEntry(key:date, value:data.indoorConditions.humidityIn!, tx:newTrans)
+		if data.indoorConditions.humidity != nil {
+			try humidityIn.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write indoor humidity for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.indoorConditions.humidity!, flags:[.append])
+			}
+			logger.trace("wrote indoor humidity", metadata:["humidityIn":"\(data.indoorConditions.humidity!)"])
 		}
 		if data.indoorConditions.baro != nil {
-			try baro.setEntry(key:date, value:data.indoorConditions.baro!, tx:newTrans)
+			try baro.cursor(tx:newTrans) { cursor in
+				do {
+					let existingDate = try cursor.opLast().key
+					guard existingDate < date else {
+						logger.error("attempted to write indoor barometric pressure for date that was older than the latest date in the database", metadata:["existingDate":"\(existingDate)"])
+						throw LMDBError.keyExists
+					}
+				} catch LMDBError.notFound {}
+				try cursor.setEntry(key:date, value:data.indoorConditions.baro!, flags:[.append])
+			}
+			logger.trace("wrote indoor barometric pressure", metadata:["baro":"\(data.indoorConditions.baro!)"])
 		}
-		// scribe the rain data
-		if data.rain.rainEvent != nil {
-			try rainEvent.setEntry(key:date, value:data.rain.rainEvent!, tx:newTrans)
-		}
-		if data.rain.rainHourly != nil {
-			try rainHourly.setEntry(key:date, value:data.rain.rainHourly!, tx:newTrans)
-		}
-		if data.rain.rainDaily != nil {
-			try rainDaily.setEntry(key:date, value:data.rain.rainDaily!, tx:newTrans)
-		}
-		if data.rain.rainWeekly != nil {
-			try rainWeekly.setEntry(key:date, value:data.rain.rainWeekly!, tx:newTrans)
-		}
-		if data.rain.rainMonthly != nil {
-			try rainMonthly.setEntry(key:date, value:data.rain.rainMonthly!, tx:newTrans)
-		}
-		if data.rain.rainYearly != nil {
-			try rainYearly.setEntry(key:date, value:data.rain.rainYearly!, tx:newTrans)
-		}
+
 		// commit the transaction
 		try newTrans.commit()
-	}
-}
-
-
-
-@MDB_comparable
-public struct EncodedDoubles:Sendable, RAW_convertible, RAW_comparable, RAW_accessible {
-	public mutating func RAW_access_mutating<R, E>(_ body:(UnsafeMutableBufferPointer<UInt8>) throws(E) -> R) throws(E) -> R {
-		func getPtr(_ unsafePtr:UnsafePointer<EncodedDouble>, count:Int) throws(E) -> R {
-			return try body(UnsafeMutableBufferPointer<UInt8>(start:UnsafeMutableRawPointer(mutating:unsafePtr).assumingMemoryBound(to:UInt8.self), count:count * MemoryLayout<EncodedDouble.RAW_staticbuff_storetype>.size))
-		}
-		return try getPtr(&elements, count:elements.count)
-	}
-
-	public var elements:[EncodedDouble]
-
-	public init(encodedDoubles:[EncodedDouble]) {
-		elements = encodedDoubles
-	}
-
-	public init?(RAW_decode: UnsafeRawPointer, count: RAW.size_t) {
-		guard count % MemoryLayout<EncodedDouble.RAW_staticbuff_storetype>.size == 0 else {
-			return nil
-		}
-		let numberOfEntries = count / MemoryLayout<EncodedDouble.RAW_staticbuff_storetype>.size
-		var buildRepValues = [EncodedDouble]()
-		var readSeeker = RAW_decode
-		for _ in 0..<numberOfEntries {
-			buildRepValues.append(EncodedDouble(RAW_staticbuff_seeking:&readSeeker))
-		}
-		self.elements = buildRepValues
-	}
-
-	public borrowing func RAW_encode(count:inout size_t) {
-		withUnsafePointer(to:self) { selfPtr in
-			count += selfPtr.pointer(to:\Self.elements)!.pointee.count * MemoryLayout<EncodedDouble.RAW_staticbuff_storetype>.size
-		}
-	}
-
-	public borrowing func RAW_encode(dest: UnsafeMutablePointer<UInt8>) -> UnsafeMutablePointer<UInt8> {
-		return withUnsafePointer(to:self) { selfPtr in
-			return selfPtr.pointer(to:\Self.elements)!.pointee.withUnsafeBufferPointer { buff in
-				var seeker = dest
-				var i = 0
-				let fullCount = buff.count
-				while i < fullCount {
-					defer {
-						i += 1
-					}
-					seeker = buff[i].RAW_encode(dest:seeker)
-				}
-				return seeker
-			}
-		}
-	}
-
-	public borrowing func RAW_access<R, E>(_ body: (UnsafeBufferPointer<UInt8>) throws(E) -> R) throws(E) -> R {
-		func getPtr(_ unsafePtr:UnsafePointer<EncodedDouble>, count:Int) throws(E) -> R {
-			return try body(UnsafeBufferPointer<UInt8>(start:UnsafeRawPointer(unsafePtr).assumingMemoryBound(to:UInt8.self), count: count * MemoryLayout<EncodedDouble.RAW_staticbuff_storetype>.size))
-		}
-		return try getPtr(elements, count:elements.count)
+		logger.debug("successfully wrote weather data")
 	}
 }

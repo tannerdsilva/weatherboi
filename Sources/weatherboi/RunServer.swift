@@ -4,6 +4,7 @@ import NIO
 import class Foundation.FileManager
 import ServiceLifecycle
 import Logging
+import bedrock
 
 extension CLI {
 	struct Run:AsyncParsableCommand {
@@ -13,9 +14,10 @@ extension CLI {
 		)
 
 		func run() async throws {
-			let homeDirectory = FileManager.default.homeDirectoryForCurrentUser
+			let homeDirectory = Path(FileManager.default.homeDirectoryForCurrentUser.path)
 			let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
-			let server = try HTTPServer(eventLoopGroupProvider: .shared(eventLoopGroup), port: 8080)
+			let mainDB = try WxDB(base:homeDirectory, logLevel:.trace)
+			let server = try HTTPServer(eventLoopGroupProvider: .shared(eventLoopGroup), port: 8080, wxDB:mainDB, logLevel:.trace)
 			try await ServiceGroup(services:[server], gracefulShutdownSignals:[.sigterm, .sigint], logger:Logger(label:"weatherboi.server")).run()
 		}
 	}

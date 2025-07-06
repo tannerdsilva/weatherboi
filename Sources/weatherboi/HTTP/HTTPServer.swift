@@ -1,5 +1,6 @@
 import Hummingbird
 import ServiceLifecycle
+import Logging
 
 struct HTTPServer:Service {
 	/// The HTTP server context used for the web server.
@@ -8,10 +9,14 @@ struct HTTPServer:Service {
 		public var coreContext:Hummingbird.CoreRequestContextStorage
 		/// The SwiftNIO ByteBuffer allocator used to produce responses.
 		public let allocator:ByteBufferAllocator
-		/// The primary initializer for the context.
+		/// the primary logger for the context
+		public let log:Logger
+
+		/// the primary initializer for the context.
 		public init(source:Hummingbird.ApplicationRequestContextSource) {
 			coreContext = .init(source:source)
 			allocator = source.channel.allocator
+			log = source.logger
 		}
 	}
 
@@ -75,33 +80,110 @@ struct HTTPServer:Service {
 	Query parameter: realtime = 1
 	Query parameter: rtfreq = 5
 	*/
-	public struct WeatherStationResponder:HTTPResponder {
+	public struct AmbientWeatherResponder:HTTPResponder {
+		private let wxdb:WxDB
+		public init(weatherDatabase:WxDB) {
+			wxdb = weatherDatabase
+		}
 	    public func respond(to request:HummingbirdCore.Request, context:HTTPServer.Context) async throws -> HummingbirdCore.Response {
-			print("Received request for \(request.uri.string)")
-	        for query in request.uri.queryParameters {
-	            print("Query parameter: \(query.key) = \(query.value)")
-	        }
+			let logger = context.log
+
+			// extract the wind data from the request
+			var windspeed:Substring? = nil
+			var winddir:Substring? = nil
+			var windgust:Substring? = nil
+
+			// extract the outdoor conditions
+			var outdoorTemp:Substring? = nil
+			var outdoorHumidity:Substring? = nil
+			var uvIndex:Substring? = nil
+			var solarRadiation:Substring? = nil
+
+			// extract the indoor conditions
+			var indoorTemp:Substring? = nil
+			var indoorHumidity:Substring? = nil
+			var baroAbs:Substring? = nil
+			
+			var batteryValues = [String:String]()
+			let batteryKeyRegex = try Regex("^batt")
+			queryLoop: for (curQueryKey, curQueryValue) in request.uri.queryParameters {
+				guard curQueryKey.count > 0 && curQueryValue.count > 0 else {
+					continue queryLoop
+				}
+				switch curQueryKey {
+					case "windspeedmph":
+						windspeed = curQueryValue
+						logger.trace("windspeed: \(String(describing:windspeed!))")
+					case "winddir":
+						winddir = curQueryValue
+						logger.trace("winddir: \(String(describing:winddir!))")
+					case "windgustmph":
+						windgust = curQueryValue
+						logger.trace("windgust: \(String(describing:windgust!))")
+					case "tempf":
+						outdoorTemp = curQueryValue
+						logger.trace("outdoor temp: \(String(describing:outdoorTemp!))")
+					case "humidity":
+						outdoorHumidity = curQueryValue
+						logger.trace("outdoor humidity: \(String(describing:outdoorHumidity!))")
+					case "uv":
+						uvIndex = curQueryValue
+						logger.trace("UV index: \(String(describing:uvIndex!))")
+					case "solarradiation":
+						solarRadiation = curQueryValue
+						logger.trace("solar radiation: \(String(describing:solarRadiation!))")
+					case "tempinf":
+						indoorTemp = curQueryValue
+						logger.trace("indoor temp: \(String(describing:indoorTemp!))")
+					case "humidityin":
+						indoorHumidity = curQueryValue
+						logger.trace("indoor humidity: \(String(describing:indoorHumidity!))")
+					case "baromabsin":
+						baroAbs = curQueryValue
+						logger.trace("barometric pressure: \(String(describing:baroAbs!))")
+					default:
+						if curQueryKey.contains(batteryKeyRegex) == true {
+							batteryValues[String(curQueryKey)] = String(curQueryValue)
+							logger.trace("battery value for key '\(curQueryKey)': \(String(describing:curQueryValue))")
+						}
+				}
+			}
+
+			let windData = WeatherReport.Wind(windDirection:winddir, windSpeed:windspeed, windGust:windgust)
+			let outdoorConditions = WeatherReport.OutdoorConditions(temp:outdoorTemp, humidity:outdoorHumidity, uvIndex:uvIndex, solarRadiation:solarRadiation)
+			let indoorConditions = WeatherReport.IndoorConditions(temp:indoorTemp, humidity:indoorHumidity, baro:baroAbs)
+			
+			let weatherReport = WeatherReport(wind:windData, outdoorConditions:outdoorConditions, indoorConditions:indoorConditions)
+			
 			return HummingbirdCore.Response(status:.ok)
 	    }
 	}
 
+	let log:Logger
 	let appv4:Application<RouterResponder<Context>>
 	let appv6:Application<RouterResponder<Context>>
+	let weatherDatabase:WxDB
 
-	public init(eventLoopGroupProvider:EventLoopGroupProvider, port:Int) throws {
-		let bindAddressV4 = BindAddress.hostname("10.54.10.39", port:port)
-		let bindAddressV6 = BindAddress.hostname("::1", port:port)
+	public init(eventLoopGroupProvider:EventLoopGroupProvider, port:Int, wxDB:WxDB, logLevel:Logger.Level) throws {
+		var makeLogger = Logger(label:"weatherboi.http")
+		makeLogger.logLevel = logLevel
+		log = makeLogger
+
+		weatherDatabase = wxDB
+
+		let bindAddressV4 = BindAddress.hostname("0.0.0.0", port:port)
+		let bindAddressV6 = BindAddress.hostname("::", port:port)
 		
 		let appConfigurationV4 = Hummingbird.ApplicationConfiguration(address:bindAddressV4, reuseAddress:true)
 		let appConfigurationV6 = Hummingbird.ApplicationConfiguration(address:bindAddressV6, reuseAddress:true)
 
 		let makeRouter = Router(context:Context.self)
 
-		let weatherStationResponder = WeatherStationResponder()
-		makeRouter.on("/data/report", method:.get, responder:weatherStationResponder)
+		let weatherStationResponder = AmbientWeatherResponder(weatherDatabase:weatherDatabase)
+		makeRouter.on("/brand/ambientweather", method:.get, responder:weatherStationResponder)
 
-		appv4 = Hummingbird.Application(router:makeRouter, configuration:appConfigurationV4, eventLoopGroupProvider:eventLoopGroupProvider)
-		appv6 = Hummingbird.Application(router:makeRouter, configuration:appConfigurationV6, eventLoopGroupProvider:eventLoopGroupProvider)
+		appv4 = Hummingbird.Application(router:makeRouter, configuration:appConfigurationV4, eventLoopGroupProvider:eventLoopGroupProvider, logger:makeLogger)
+		appv6 = Hummingbird.Application(router:makeRouter, configuration:appConfigurationV6, eventLoopGroupProvider:eventLoopGroupProvider, logger:makeLogger)
 	}
 
 	public func run() async throws {

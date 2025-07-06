@@ -1,4 +1,7 @@
 import ArgumentParser
+import class Foundation.FileManager
+import bedrock
+import Logging
 
 @main
 struct CLI:AsyncParsableCommand {
@@ -7,7 +10,7 @@ struct CLI:AsyncParsableCommand {
 		abstract:"a highly efficient daemon for capturing, storing, and redistributing data from on-premises weather stations.",
 		version:"\(GitRepositoryInfo.tag) (\(GitRepositoryInfo.commitHash))\(GitRepositoryInfo.commitRevisionHash != nil ? " commit revision: \(GitRepositoryInfo.commitRevisionHash!.prefix(8))" : "")",
 		subcommands:[
-			Run.self
+			Run.self,
 		]
 	)
 }
