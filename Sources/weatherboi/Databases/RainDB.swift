@@ -100,7 +100,7 @@ public struct RainDB:Sendable {
 		let newTrans = try Transaction(env:env, readOnly:true)
 		logger.trace("transaction successfully opened")
 		var allData:[DateUTC:UInt32FourDigitDecimalValue] = [:]
-		try main.cursor(tx:newTrans) { cursor in
+		main.cursor(tx:newTrans) { cursor in
 			logger.trace("cursor successfully opened")
 			for (key, value) in cursor {
 				logger.trace("found rain data for date \(key) with value \(value)")
