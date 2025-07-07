@@ -4,29 +4,29 @@ public struct WeatherReport {
 		/// the direction of the wind in degrees. 0 is north, 90 is east, 180 is south, and 270 is west.
 		public let windDirection:EncodedUInt16?
 		/// the speed of the wind in miles per hour
-		public let windSpeed:EncodedUInt16?
+		public let windSpeed:UInt16TwoDigitDecimalValue?
 		/// the gust speed of the wind in miles per hour
-		public let windGust:EncodedUInt16?
+		public let windGust:UInt16TwoDigitDecimalValue?
 	}
 	/// the container for outdoor conditions
 	public struct OutdoorConditions {
 		/// the temperature in degrees Fahrenheit
 		public let temp:EncodedDouble?
 		/// the humidity percentage
-		public let humidity:EncodedDouble?
+		public let humidity:UInt16TwoDigitDecimalValue?
 		/// the UV index
 		public let uvIndex:EncodedByte?
 		/// the solar radiation in watts per square meter
-		public let solarRadiation:EncodedDouble?
+		public let solarRadiation:EncodedUInt16?
 	}
 	/// the container for indoor conditions
 	public struct IndoorConditions {
 		/// the temperature in degrees Fahrenheit
 		public let temp:EncodedDouble?
 		/// the humidity percentage
-		public let humidity:EncodedDouble?
+		public let humidity:UInt16TwoDigitDecimalValue?
 		/// the barometric pressure in inches of mercury
-		public let baro:EncodedDouble?
+		public let baro:UInt32FourDigitDecimalValue?
 	}
 	/// stores the wind data for the weather report
 	public let wind:Wind
@@ -44,13 +44,13 @@ extension WeatherReport.Wind {
 		} else {
 			windDirection = nil
 		}
-		if let ws = wsInput, let wsDouble = UInt16(ws) {
-			windSpeed = EncodedUInt16(RAW_native:wsDouble)
+		if let ws = wsInput, let wsDouble = Double(ws) {
+			windSpeed = UInt16TwoDigitDecimalValue(wsDouble)
 		} else {
 			windSpeed = nil
 		}
-		if let wg = wgInput, let wgDouble = UInt16(wg) {
-			windGust = EncodedUInt16(RAW_native:wgDouble)
+		if let wg = wgInput, let wgDouble = Double(wg) {
+			windGust = UInt16TwoDigitDecimalValue(wgDouble)
 		} else {
 			windGust = nil
 		}
@@ -66,7 +66,7 @@ extension WeatherReport.OutdoorConditions {
 			temp = nil
 		}
 		if let h = hInput, let hDouble = Double(h) {
-			humidity = EncodedDouble(RAW_native:hDouble)
+			humidity = UInt16TwoDigitDecimalValue(hDouble)
 		} else {
 			humidity = nil
 		}
@@ -75,8 +75,8 @@ extension WeatherReport.OutdoorConditions {
 		} else {
 			uvIndex = nil
 		}
-		if let sr = srInput, let srDouble = Double(sr) {
-			solarRadiation = EncodedDouble(RAW_native:srDouble)
+		if let sr = srInput, let srDouble = UInt16(sr) {
+			solarRadiation = EncodedUInt16(RAW_native:srDouble)
 		} else {
 			solarRadiation = nil
 		}
@@ -92,12 +92,12 @@ extension WeatherReport.IndoorConditions {
 			temp = nil
 		}
 		if let h = hInput, let hDouble = Double(h) {
-			humidity = EncodedDouble(RAW_native:hDouble)
+			humidity = UInt16TwoDigitDecimalValue(hDouble)
 		} else {
 			humidity = nil
 		}
 		if let b = bInput, let bDouble = Double(b) {
-			baro = EncodedDouble(RAW_native:bDouble)
+			baro = UInt32FourDigitDecimalValue(bDouble)
 		} else {
 			baro = nil
 		}
