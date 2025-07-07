@@ -6,8 +6,8 @@ import struct QuickLMDB.Transaction
 
 @main
 struct CLI:AsyncParsableCommand {
-	static func defaultDBBasePath() -> String {
-		return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("weatherboi_lmdb").path
+	static func defaultDBBasePath() -> Path {
+		return Path(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("weatherboi_lmdb").path)
 	}
 
 	static let configuration = CommandConfiguration(
@@ -39,7 +39,7 @@ struct CLI:AsyncParsableCommand {
 			)
 
 			@Option(help:"the path to the database directory, defaults to the user's home directory")
-			var databasePath:String = CLI.defaultDBBasePath()
+			var databasePath:Path = CLI.defaultDBBasePath()
 
 			func run() throws {
 				let logger = Logger(label:"weatherboi.rain.clear")
@@ -57,14 +57,16 @@ struct CLI:AsyncParsableCommand {
 				abstract:"a subcommand for scribing rain data."
 			)
 
+			@Option(help:"the path to the database directory, defaults to the user's home directory")
+			var databasePath:Path = CLI.defaultDBBasePath()
+
 			@Argument
 			var cumulativeAmount:Double
 
 			func run() throws {
 				let logger = Logger(label:"weatherboi.rain.scribe")
-				let homeDirectory = Path(FileManager.default.homeDirectoryForCurrentUser.path)
-				let metaDB = try MetadataDB(base:homeDirectory, logLevel:.trace)
-				let rainDB = try RainDB(base:homeDirectory, logLevel:.trace)
+				let metaDB = try MetadataDB(base:databasePath, logLevel:.trace)
+				let rainDB = try RainDB(base:databasePath, logLevel:.trace)
 				let newTX = try Transaction(env:metaDB.env, readOnly:false)
 				try metaDB.exchangeLastCumulativeRainValue(tx:newTX, cumulativeAmount, afterSwap: { newValue in
 					try rainDB.scribeNewIncrementValue(date:DateUTC(), increment:newValue, logLevel:.debug)
@@ -80,12 +82,11 @@ struct CLI:AsyncParsableCommand {
 			)
 
 			@Option(help:"the path to the database directory, defaults to the user's home directory")
-			var databasePath:String = CLI.defaultDBBasePath()
+			var databasePath:Path = CLI.defaultDBBasePath()
 
 			func run() throws {
 				let logger = Logger(label:"weatherboi.rain.current-rate")
-				let homeDirectory = Path(databasePath)
-				let rainDB = try RainDB(base:homeDirectory, logLevel:.trace)
+				let rainDB = try RainDB(base:databasePath, logLevel:.trace)
 				let currentRate = try rainDB.calculateRainPerHour(at:DateUTC(), logLevel:.trace)
 				logger.info("current rain rate: \(currentRate)")
 			}
@@ -97,10 +98,12 @@ struct CLI:AsyncParsableCommand {
 				abstract:"a subcommand for listing rain data."
 			)
 
+			@Option(help:"the path to the database directory, defaults to the user's home directory")
+			var databasePath:Path = CLI.defaultDBBasePath()
+
 			func run() throws {
 				let logger = Logger(label:"weatherboi.rain.list")
-				let homeDirectory = Path(FileManager.default.homeDirectoryForCurrentUser.path)
-				let rainDB = try RainDB(base:homeDirectory, logLevel:.trace)
+				let rainDB = try RainDB(base:databasePath, logLevel:.trace)
 				let allData = try rainDB.listAllRainData(logLevel:.debug)
 				var sumValue:Double = 0
 				for (date, value) in allData.sorted(by: { $0.key < $1.key }) {
@@ -110,5 +113,15 @@ struct CLI:AsyncParsableCommand {
 				logger.info("total rain data: \(UInt32(sumValue))")
 			}
 		}
+	}
+}
+
+
+extension Path:@retroactive ExpressibleByArgument {
+	public init?(argument:String) {
+		self.init(argument)
+	}
+	public var description:String {
+		return self.path()
 	}
 }
