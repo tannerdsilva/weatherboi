@@ -3,6 +3,9 @@
 import PackageDescription
 let package = Package(
     name: "weatherboi",
+	platforms:[
+		.macOS(.v15)
+	],
     products: [
         .executable(
             name: "weatherboi",
@@ -19,7 +22,7 @@ let package = Package(
 		.package(url:"https://github.com/swift-server/swift-service-lifecycle.git", "2.6.3"..<"3.0.0"),
 		.package(url:"https://github.com/apple/swift-argument-parser.git", "1.5.0"..<"2.0.0"),
 		.package(url:"https://github.com/tannerdsilva/QuickLMDB.git", "11.1.0"..<"12.0.0"),
-		.package(url:"https://github.com/tannerdsilva/bedrock.git", "2.1.0"..<"3.0.0")
+		.package(url:"https://github.com/tannerdsilva/bedrock.git", "4.0.1"..<"5.0.0")
 	],
     targets: [
 		.plugin(
@@ -29,7 +32,15 @@ let package = Package(
         .executableTarget(
             name: "weatherboi",
             dependencies:[
-            	.product(name:"ArgumentParser", package:"swift-argument-parser")
+            	.product(name:"ArgumentParser", package:"swift-argument-parser"),
+				.product(name:"Hummingbird", package:"hummingbird"),
+				.product(name:"RAW", package:"rawdog"),
+				.product(name:"QuickJSON", package:"QuickJSON"),
+				.product(name:"QuickLMDB", package:"QuickLMDB"),
+				.product(name:"ServiceLifecycle", package:"swift-service-lifecycle"),
+				.product(name:"AsyncHTTPClient", package:"async-http-client"),
+				.product(name:"Logging", package:"swift-log"),
+				.product(name:"bedrock", package:"bedrock"),
             ],
             plugins:[
             	"GitCommitInfoPlugin"
