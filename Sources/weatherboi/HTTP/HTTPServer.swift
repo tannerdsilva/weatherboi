@@ -23,6 +23,7 @@ struct HTTPServer:Service {
 
 	/*
 	Received request for /data/report?&PASSKEY=X&stationtype=AMBWeatherPro_V5.2.2&dateutc=2025-07-04+02:55:57&tempf=76.8&humidity=81&windspeedmph=2.91&windgustmph=5.14&maxdailygust=17.45&winddir=204&winddir_avg10m=210&uv=0&solarradiation=0.00&hourlyrainin=0.000&eventrainin=0.000&dailyrainin=0.004&weeklyrainin=0.004&monthlyrainin=0.004&yearlyrainin=0.004&battout=1&battrain=1&tempinf=85.1&humidityin=65&baromrelin=29.264&baromabsin=29.264&battin=1
+	WITH LIGHTNING: /brand/ambientweather?&PASSKEY=X&stationtype=AMBWeatherPro_V5.2.2&dateutc=2025-07-09+01:12:27&tempf=83.3&humidity=71&windspeedmph=5.37&windgustmph=11.63&maxdailygust=17.67&winddir=214&winddir_avg10m=192&uv=0&solarradiation=71.11&hourlyrainin=0.000&eventrainin=0.000&dailyrainin=0.000&weeklyrainin=0.516&monthlyrainin=1.000&yearlyrainin=1.000&battout=1&battrain=1&tempinf=92.8&humidityin=53&baromrelin=29.282&baromabsin=29.282&battin=1&lightning_day=16&lightning_time=1752023497&lightning_distance=24&batt_lightning=0
 	Query parameter:  = 
 	Query parameter: PASSKEY = X
 	Query parameter: stationtype = AMBWeatherPro_V5.2.2
