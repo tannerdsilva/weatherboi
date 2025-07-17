@@ -370,7 +370,7 @@ public struct WxDB:Sendable {
 													let direction:EncodedUInt16
 													do {
 														(foundDate, direction) = try winddirCursor.opSetRange(key:seekDate)
-														let thisThreshold = seekDate.timeIntervalSince(foundDate)
+														let thisThreshold = foundDate.timeIntervalSince(seekDate)
 														guard thisThreshold < threshold else {
 															logger.warning("wind direction data is outside of allowable threshold", metadata:["loaded_date":"\(foundDate)", "seekDate":"\(seekDate)"])
 															// go to the next iteration of the loop
