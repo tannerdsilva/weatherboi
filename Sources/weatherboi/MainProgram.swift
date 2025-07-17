@@ -30,7 +30,8 @@ struct CLI:AsyncParsableCommand {
 				Scribe.self,
 				List.self,
 				Clear.self,
-				CurrentRate.self
+				CurrentRate.self,
+				PullData.self
 			]
 		)
 
