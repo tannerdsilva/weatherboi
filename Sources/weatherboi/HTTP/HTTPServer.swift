@@ -172,7 +172,10 @@ struct HTTPServer:Service {
 				}
 			}
 
-			let windData = WeatherReport.Wind(windDirection:winddir, windSpeed:windspeed, windGust:windgust)
+			guard let windData = WeatherReport.Wind(windDirection:winddir, windSpeed:windspeed, windGust:windgust) else {
+				logger.warning("invalid wind data")
+				return HummingbirdCore.Response(status:.badRequest)
+			}
 			let outdoorConditions = WeatherReport.OutdoorConditions(temp:outdoorTemp, humidity:outdoorHumidity, uvIndex:uvIndex, solarRadiation:solarRadiation)
 			let indoorConditions = WeatherReport.IndoorConditions(temp:indoorTemp, humidity:indoorHumidity, baro:baroAbs)
 			let weatherReport = WeatherReport(wind:windData, outdoorConditions:outdoorConditions, indoorConditions:indoorConditions)

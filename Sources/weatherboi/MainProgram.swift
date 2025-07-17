@@ -1,5 +1,7 @@
 import ArgumentParser
 import class Foundation.FileManager
+import struct Foundation.Date
+import class Foundation.ISO8601DateFormatter
 import bedrock
 import Logging
 import struct QuickLMDB.Transaction
@@ -72,6 +74,32 @@ struct CLI:AsyncParsableCommand {
 					try rainDB.scribeNewIncrementValue(date:DateUTC(), increment:newValue, logLevel:.debug)
 				}, logLevel: .trace)
 				try newTX.commit()
+			}
+		}
+
+		struct PullData:AsyncParsableCommand {
+			static let configuration = CommandConfiguration(
+				commandName:"pull-data",
+				abstract:"a subcommand for pulling rain data from a remote source."
+			)
+
+			@Option(help:"the path to the database directory, defaults to the user's home directory")
+			var databasePath:Path = CLI.defaultDBBasePath()
+
+			@Argument(help:"the date to pull data for, in the format ISO8601 (e.g., 2023-10-01T00:00:00Z)")
+			var pullDate:String = ISO8601DateFormatter().string(from:Date())
+
+			@Argument(help:"the number of data points to pull data for, defaults to 360")
+			var numberOfDataPoints:UInt32 = 360
+
+			@Argument(help:"the interval in seconds between data points, defaults to 60")
+			var interval:UInt64 = 60
+
+			func run() async throws {
+				let logger = Logger(label:"weatherboi.rain.pull-data")
+				let wxdb = try WxDB(base:databasePath, logLevel:.trace)
+				try await wxdb.pullData(date:DateUTC(seconds:bedrock.Date.Seconds(RAW_native:UInt64(ISO8601DateFormatter().date(from:pullDate)!.timeIntervalSince1970))), dataPointCount:numberOfDataPoints, dataPointInterval:interval)
+				logger.info("successfully pulled rain data")
 			}
 		}
 

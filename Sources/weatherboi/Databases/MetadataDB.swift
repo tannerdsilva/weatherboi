@@ -11,6 +11,7 @@ public struct EncodedString:Sendable, Equatable, Hashable, Comparable, Expressib
 		return String(self)
 	}
 }
+
 extension EncodedString:RawRepresentable {
 	public init(rawValue:String) {
 		self.init(rawValue)
@@ -120,7 +121,7 @@ public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConverti
 	public init() {
 		seconds = bedrock.Date.Seconds(localTime:false)
 	}
-	private init(seconds unixTime:bedrock.Date.Seconds) {
+	public init(seconds unixTime:bedrock.Date.Seconds) {
 		seconds = unixTime
 	}
 	public var debugDescription:String {
@@ -131,6 +132,12 @@ public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConverti
 	}
 	public static func - (_ lhs:DateUTC, _ rhs:UInt64) -> DateUTC {
 		return Self(seconds:lhs.seconds - rhs)
+	}
+	public static func -= (_ lhs:inout DateUTC, _ rhs:UInt64) {
+		lhs = lhs - rhs
+	}
+	public func timeIntervalSince(_ other:DateUTC) -> UInt64 {
+		return seconds.timeIntervalSince(other.seconds)
 	}
 }
 
@@ -176,6 +183,7 @@ public struct MetadataDB:Sendable {
 			logger.debug("no existing entry found for device identifier, the device id will be stored and used as the exclusive allowed identifier for this device")
 			try metadata.setEntry(key:deviceIdentifier, value:deviceIdentifier, flags:[], tx:newTrans)
 		}
+		let myNumber:EncodedUInt16 = 6643 // just a dummy value to ensure the transaction is not empty
 		try newTrans.commit()
 		return true
 	}
@@ -264,6 +272,7 @@ public struct WxDB:Sendable {
 		case baroIn = "baro_indoor_inhg"
 	}
 
+	// primary environment 
 	let env:Environment
 
 	let log:Logger
@@ -272,17 +281,20 @@ public struct WxDB:Sendable {
 	let winddir:Database.Strict<DateUTC, EncodedUInt16>
 	let windspeed:Database.Strict<DateUTC, UInt16TwoDigitDecimalValue>
 	let windgust:Database.Strict<DateUTC, UInt16TwoDigitDecimalValue>
+	
 	// outdoor conditions
 	let tempOut:Database.Strict<DateUTC, EncodedDouble>
 	let humidityOut:Database.Strict<DateUTC, UInt16TwoDigitDecimalValue>
 	let uvIndex:Database.Strict<DateUTC, EncodedByte>
 	let solarRadiation:Database.Strict<DateUTC, EncodedUInt16>
+	
 	// conditions indoor
 	let tempIn:Database.Strict<DateUTC, EncodedDouble>
 	let humidityIn:Database.Strict<DateUTC, UInt16TwoDigitDecimalValue>
 	let baro:Database.Strict<DateUTC, UInt32FourDigitDecimalValue>
 
 	public init(base:Path, logLevel:Logger.Level) throws {
+
 		// initialize the logging infrastructure
 		var makeLogger = Logger(label:"\(String(describing:Self.self))")
 		makeLogger.logLevel = logLevel
@@ -316,6 +328,167 @@ public struct WxDB:Sendable {
 		// commit the transaction
 		try newTrans.commit()
 	}
+	/// thrown when an invalid argument is passed to a method that requires a valid argument
+	struct InvalidArgumentError:Swift.Error {}
+	public func pullData(date:DateUTC, dataPointCount:UInt32, dataPointInterval interval:UInt64) throws -> [WeatherReport?] {
+		let threshold = UInt64(Double(interval) * Double(1.5))
+		var logger = log
+		logger[metadataKey:"_func"] = "\(#function)"
+		logger[metadataKey:"threshold"] = "\(threshold)"
+		logger[metadataKey:"data_point_count"] = "\(dataPointCount)"
+		logger[metadataKey:"data_point_interval"] = "\(interval)"
+		logger.trace("pulling data", metadata:["input_date":"\(date)"])
+
+		// validate the data point count and interval
+		guard dataPointCount > 0 && interval > 0 else {
+			logger.error("data point count must be greater than 0")
+			throw InvalidArgumentError()
+		}
+
+		let newTrans = try Transaction(env:env, readOnly:true)
+
+		let lastDate = date - (UInt64(dataPointCount) * interval)
+		var seekDate = date
+		return try winddir.cursor(tx:newTrans, { winddirCursor in
+			try windspeed.cursor(tx:newTrans) { windspeedCursor in
+				try windgust.cursor(tx:newTrans) { windgustCursor in
+					try tempOut.cursor(tx:newTrans) { tempOutCursor in
+						try humidityOut.cursor(tx:newTrans) { humidityOutCursor in
+							try uvIndex.cursor(tx:newTrans) { uvIndexCursor in
+								try solarRadiation.cursor(tx:newTrans) { solarRadCursor in
+									try tempIn.cursor(tx:newTrans) { tempInCursor in
+										try humidityIn.cursor(tx:newTrans) { humidityInCursor in
+											try baro.cursor(tx:newTrans) { baroCursor in
+												var buildResults = [WeatherReport?]()
+												seekLoop: repeat {
+													defer {
+														seekDate -= interval
+													}
+
+													// load the direction data. the date found here will be used for the wind speed and gust data
+													let foundDate:DateUTC
+													let direction:EncodedUInt16
+													do {
+														(foundDate, direction) = try winddirCursor.opSetRange(key:seekDate)
+														let thisThreshold = seekDate.timeIntervalSince(foundDate)
+														guard thisThreshold < threshold else {
+															logger.warning("wind direction data is outside of allowable threshold", metadata:["loaded_date":"\(foundDate)", "seekDate":"\(seekDate)"])
+															// go to the next iteration of the loop
+															buildResults.append(nil)
+															continue seekLoop
+														}
+													} catch LMDBError.notFound {
+														buildResults.append(nil)
+														continue seekLoop
+													}
+
+													// load the speed data
+													let speed:UInt16TwoDigitDecimalValue
+													do {
+														speed = try windspeedCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														buildResults.append(nil)
+														continue seekLoop
+													}
+
+													// load the gust data
+													let gust:UInt16TwoDigitDecimalValue
+													do {
+														gust = try windgustCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														buildResults.append(nil)
+														continue seekLoop
+													}
+
+													let windConditions = WeatherReport.Wind(windDirection: direction, windSpeed: speed, windGust: gust)
+
+													// load the temperature data
+													let tempOutdoor:EncodedDouble?
+													do {
+														tempOutdoor = try tempOutCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														tempOutdoor = nil
+													}
+
+													// load the humidity data
+													let humidity:UInt16TwoDigitDecimalValue?
+													do {
+														humidity = try humidityOutCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														humidity = nil
+													}
+
+													// load the UV index data
+													let uv:EncodedByte?
+													do {
+														uv = try uvIndexCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														uv = nil
+													}
+
+													// load the solar radiation data
+													let solarRad:EncodedUInt16?
+													do {
+														solarRad = try solarRadCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														solarRad = nil
+													}
+
+													guard tempOutdoor != nil || humidity != nil || uv != nil || solarRad != nil else {
+														logger.warning("no outdoor conditions data found for date. skipping seek for remaining data.", metadata:["seekDate":"\(seekDate)"])
+														buildResults.append(nil)
+														continue seekLoop
+													}
+
+													let outdoorConditions = WeatherReport.OutdoorConditions(temp:tempOutdoor, humidity:humidity, uvIndex:uv, solarRadiation:solarRad)
+
+													// load the temperature data
+													let tempIndoor:EncodedDouble?
+													do {
+														tempIndoor = try tempInCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														tempIndoor = nil
+													}
+
+													// load the humidity data
+													let humidityIndoor:UInt16TwoDigitDecimalValue?
+													do {
+														humidityIndoor = try humidityInCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														humidityIndoor = nil
+													}
+
+													// load the barometric pressure data
+													let baro:UInt32FourDigitDecimalValue?
+													do {
+														baro = try baroCursor.opSet(key:foundDate)
+													} catch LMDBError.notFound {
+														baro = nil
+													}
+
+													guard tempIndoor != nil || humidityIndoor != nil || baro != nil else {
+														logger.warning("no indoor conditions data found for date. skipping seek for remaining data.", metadata:["seekDate":"\(seekDate)"])
+														buildResults.append(nil)
+														continue seekLoop
+													}
+
+													let indoorConditions = WeatherReport.IndoorConditions(temp:tempIndoor, humidity:humidityIndoor, baro:baro)
+
+													buildResults.append(WeatherReport(wind:windConditions, outdoorConditions:outdoorConditions, indoorConditions:indoorConditions))
+													logger.trace("successfully built weather report for date", metadata:["date":"\(foundDate)"])
+												} while seekDate > lastDate
+												return buildResults
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		})
+	}
 
 	public func scribeNewData(date:DateUTC, _ data:WeatherReport, logLevel:Logger.Level) throws {
 		var logger = log
@@ -326,7 +499,7 @@ public struct WxDB:Sendable {
 		let newTrans = try Transaction(env:env, readOnly:false)
 		
 		// scribe the wind data
-		if data.wind.windDirection != nil {
+		// if data.wind.windDirection != nil {
 			try winddir.cursor(tx:newTrans) { cursor in
 				do {
 					let existingDate = try cursor.opLast().key
@@ -335,11 +508,11 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.wind.windDirection!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.wind.windDirection, flags:[.append])
 			}
-			logger.trace("wrote wind direction", metadata:["windDirection":"\(data.wind.windDirection!)"])
-		}
-		if data.wind.windSpeed != nil {
+			logger.trace("wrote wind direction", metadata:["windDirection":"\(data.wind.windDirection)"])
+		// }
+		// if data.wind.windSpeed != nil {
 			try windspeed.cursor(tx:newTrans) { cursor in
 				do {
 					let existingDate = try cursor.opLast().key
@@ -348,11 +521,11 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.wind.windSpeed!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.wind.windSpeed, flags:[.append])
 			}
-			logger.trace("wrote wind speed", metadata:["windSpeed":"\(data.wind.windSpeed!)"])
-		}
-		if data.wind.windGust != nil {
+			logger.trace("wrote wind speed", metadata:["windSpeed":"\(data.wind.windSpeed)"])
+		// }
+		// if data.wind.windGust != nil {
 			try windgust.cursor(tx:newTrans) { cursor in
 				do {
 					let existingDate = try cursor.opLast().key
@@ -361,10 +534,10 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.wind.windGust!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.wind.windGust, flags:[.append])
 			}
-			logger.trace("wrote wind gust", metadata:["windGust":"\(data.wind.windGust!)"])
-		}
+			logger.trace("wrote wind gust", metadata:["windGust":"\(data.wind.windGust)"])
+		// }
 
 		// scribe the outdoor conditions
 		if data.outdoorConditions.temp != nil {
