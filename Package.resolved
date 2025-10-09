@@ -1,5 +1,5 @@
 {
-  "originHash" : "8eede0903a8356739022f63c8534888be97a1866484ab7e8a36efe7e1f59b84b",
+  "originHash" : "8ee3d90206e079c73180f0f1444963e1c987e54d09f65c1450cada9e1f14c67d",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tannerdsilva/bedrock.git",
       "state" : {
-        "revision" : "d880a93e1bb4f3d61454a375f4c38586bab3149c",
-        "version" : "4.0.2"
+        "revision" : "554e4b8392937d7fa0b07819af272f229b4b60c5",
+        "version" : "7.0.1"
       }
     },
     {
@@ -38,6 +38,14 @@
       }
     },
     {
+      "identity" : "negentropy-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/bwyma1/negentropy-swift",
+      "state" : {
+        "revision" : "446fdf3a99678df9f6add22c7046e02bb8bc3e70"
+      }
+    },
+    {
       "identity" : "quickjson",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tannerdsilva/QuickJSON.git",
@@ -50,8 +58,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tannerdsilva/QuickLMDB.git",
       "state" : {
-        "revision" : "05d86a3560bfbb95739997ab37e56b9062946cc3",
-        "version" : "11.1.0"
+        "revision" : "980d58655a9535ef8f88e1215f998cf96239b848",
+        "version" : "14.0.0"
       }
     },
     {
@@ -59,8 +67,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tannerdsilva/rawdog.git",
       "state" : {
-        "revision" : "151e840f6bfa0ef1bf507bf3ca55f626038ec57d",
-        "version" : "17.0.1"
+        "revision" : "6115f31ffcc9612bd2b9c5c950c3b413241c5ece",
+        "version" : "20.0.0"
       }
     },
     {
@@ -257,8 +265,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-syntax.git",
       "state" : {
-        "revision" : "0687f71944021d616d34d922343dcef086855920",
-        "version" : "600.0.1"
+        "revision" : "4799286537280063c85a32f09884cfbca301b1a1",
+        "version" : "602.0.0"
       }
     },
     {
@@ -268,6 +276,14 @@
       "state" : {
         "revision" : "61e4ca4b81b9e09e2ec863b00c340eb13497dac6",
         "version" : "1.5.0"
+      }
+    },
+    {
+      "identity" : "wireguard-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tannerdsilva/wireguard-swift",
+      "state" : {
+        "revision" : "dd0f51771d422c458fa23126a85efe9f1abde0b8"
       }
     },
     {

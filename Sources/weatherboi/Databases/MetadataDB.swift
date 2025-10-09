@@ -1,4 +1,5 @@
 import QuickLMDB
+import negentropy_swift
 import RAW
 import bedrock
 import Logging
@@ -114,7 +115,7 @@ public typealias EncodedByte = RAW_byte
 
 @RAW_staticbuff(concat:bedrock.Date.Seconds.self)
 @MDB_comparable()
-public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConvertible, Hashable {
+public struct DateUTC:Sendable, Equatable, Comparable, CustomDebugStringConvertible, Hashable, StorageID {
 	/// represents the time in seconds since the Unix epoch (January 1, 1970)
 	private let seconds:bedrock.Date.Seconds
 	public init() {
@@ -464,5 +465,102 @@ public struct WxDB:Sendable {
 		// commit the transaction
 		try newTrans.commit()
 		logger.debug("successfully wrote weather data")
+	}
+	
+	public func getWeatherReport(date:DateUTC) throws -> [UInt8] {
+		var weatherReport:[UInt8] = []
+		let newTrans = try Transaction(env:env, readOnly:true)
+		do {
+			let winddir = try winddir.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += winddir.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let windSpeed = try windspeed.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += windSpeed.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let windGust = try windgust.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += windGust.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let tempOut = try tempOut.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += tempOut.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let humidityOut = try humidityOut.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += humidityOut.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let uvIndexOut = try uvIndex.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += uvIndexOut.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let solarRadiation = try solarRadiation.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += solarRadiation.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let tempIn = try tempIn.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += tempIn.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let humidityIn = try humidityIn.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += humidityIn.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		do {
+			let baro = try baro.loadEntry(key: date, tx: newTrans)
+			weatherReport += [1]
+			weatherReport += baro.RAW_access { ptr in
+				return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: ptr.count))
+			}
+		} catch {
+			weatherReport += [0]
+		}
+		
+		return weatherReport
 	}
 }

@@ -16,7 +16,8 @@ struct CLI:AsyncParsableCommand {
 		version:"\(GitRepositoryInfo.tag) (\(GitRepositoryInfo.commitHash))\(GitRepositoryInfo.commitRevisionHash != nil ? " commit revision: \(GitRepositoryInfo.commitRevisionHash!.prefix(8))" : "")",
 		subcommands:[
 			Run.self,
-			Rain.self
+			Rain.self,
+			Sync.self
 		]
 	)
 

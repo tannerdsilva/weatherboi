@@ -1,4 +1,108 @@
+fileprivate func checkNil(_ data: inout [UInt8]) -> Bool{
+	defer {
+		data.removeFirst(1)
+	}
+	if data.first == 0 {
+		return true
+	}
+	return false
+}
 public struct WeatherReport {
+	/// Initializer for http server
+	init(wind:Wind, outdoorConditions:OutdoorConditions, indoorConditions:IndoorConditions) {
+		self.wind = wind
+		self.outdoorConditions = outdoorConditions
+		self.indoorConditions = indoorConditions
+	}
+	/// Initializer for syncing
+	public init(_ data: consuming [UInt8]) {
+		
+		var winddir: EncodedUInt16?
+		if (!checkNil(&data)) {
+			winddir = data.withUnsafeBufferPointer { ptr in
+				return EncodedUInt16(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<EncodedUInt16>.size)
+		}
+		
+		var windSpeed: UInt16TwoDigitDecimalValue?
+		if (!checkNil(&data)) {
+			windSpeed = data.withUnsafeBufferPointer { ptr in
+				return UInt16TwoDigitDecimalValue(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<UInt16TwoDigitDecimalValue>.size)
+		}
+		
+		var windGust: UInt16TwoDigitDecimalValue?
+		if (!checkNil(&data)) {
+			windGust = data.withUnsafeBufferPointer { ptr in
+				return UInt16TwoDigitDecimalValue(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<UInt16TwoDigitDecimalValue>.size)
+		}
+		
+		wind = Wind(windDirection: winddir, windSpeed: windSpeed, windGust: windGust)
+		
+		var tempOutdoor: EncodedDouble?
+		if (!checkNil(&data)) {
+			tempOutdoor = data.withUnsafeBufferPointer { ptr in
+				return EncodedDouble(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<EncodedDouble>.size)
+		}
+		
+		var humidityOutdoor: UInt16TwoDigitDecimalValue?
+		if (!checkNil(&data)) {
+			humidityOutdoor = data.withUnsafeBufferPointer { ptr in
+				return UInt16TwoDigitDecimalValue(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<UInt16TwoDigitDecimalValue>.size)
+		}
+		
+		var uvIndex: EncodedByte?
+		if (!checkNil(&data)) {
+			uvIndex = data.withUnsafeBufferPointer { ptr in
+				return EncodedByte(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<EncodedByte>.size)
+		}
+		
+		var solarRadiation: EncodedUInt16?
+		if (!checkNil(&data)) {
+			solarRadiation = data.withUnsafeBufferPointer { ptr in
+				return EncodedUInt16(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<EncodedUInt16>.size)
+		}
+		
+		outdoorConditions = OutdoorConditions(temp: tempOutdoor, humidity: humidityOutdoor, uvIndex: uvIndex, solarRadiation: solarRadiation)
+		
+		var tempIndoor: EncodedDouble?
+		if (!checkNil(&data)) {
+			tempIndoor = data.withUnsafeBufferPointer { ptr in
+				return EncodedDouble(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<EncodedDouble>.size)
+		}
+		
+		var humidityIndoor: UInt16TwoDigitDecimalValue?
+		if (!checkNil(&data)) {
+			humidityIndoor = data.withUnsafeBufferPointer { ptr in
+				return UInt16TwoDigitDecimalValue(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<UInt16TwoDigitDecimalValue>.size)
+		}
+		
+		var baro: UInt32FourDigitDecimalValue?
+		if (!checkNil(&data)) {
+			baro = data.withUnsafeBufferPointer { ptr in
+				return UInt32FourDigitDecimalValue(RAW_staticbuff: ptr.baseAddress!)
+			}
+			data.removeFirst(MemoryLayout<UInt32FourDigitDecimalValue>.size)
+		}
+		
+		indoorConditions = IndoorConditions(temp: tempIndoor, humidity: humidityIndoor, baro: baro)
+	}
 	/// the container for wind data
 	public struct Wind {
 		/// the direction of the wind in degrees. 0 is north, 90 is east, 180 is south, and 270 is west.
