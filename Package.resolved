@@ -1,5 +1,5 @@
 {
-  "originHash" : "894eed2a3e1de608beea30db5cfb4e8fd3ee017cfbca7811e47e19d2447f13b2",
+  "originHash" : "5f8ad1282d7fc8eb3a27566490f485535c0939c54a15818b05eaff51acce5f47",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -42,7 +42,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/bwyma1/negentropy-swift",
       "state" : {
-        "revision" : "446fdf3a99678df9f6add22c7046e02bb8bc3e70"
+        "revision" : "32071995bbdb4a4b60ca1ae8760284b3fbaec555"
       }
     },
     {
