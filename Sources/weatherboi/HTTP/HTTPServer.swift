@@ -190,7 +190,7 @@ struct HTTPServer:Service {
 				// write the battery data to the metadata database
 				try! metadb.storeBatteryData(tx:newTransaction, batteryValues, logLevel:logger.logLevel)
 				try newTransaction.commit()
-				try wxdb.scribeNewData(date:dateNow, weatherReport, logLevel:logger.logLevel)
+				try wxdb.scribeNewData(date:dateNow, weatherReport, logLevel:logger.logLevel, flags:[.append])
 			}
 			do {
 				try transactData()

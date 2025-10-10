@@ -34,7 +34,7 @@ extension CLI {
 			_ = try await withThrowingTaskGroup(body: { foo in
 				var myPeers:[PeerInfo] = []
 				myPeers.append(PeerInfo(publicKey:peers.publicKey, ipAddress:ipAddress, port: peers.port, internalKeepAlive: .seconds(30)))
-				let myInterface = try WGInterface<[UInt8]>(staticPrivateKey:myPrivateKey, mtu:1400, initialConfiguration:myPeers, logLevel:.debug, listeningPort: myPort)
+				let myInterface = try WGInterface<[UInt8]>(staticPrivateKey:myPrivateKey, mtu:1400, initialConfiguration:myPeers, logLevel:.info, listeningPort: myPort)
 				
 				foo.addTask {
 					try await myInterface.run()
@@ -111,7 +111,7 @@ extension CLI {
 							}
 							let weatherData = incomingData.dropFirst(MemoryLayout<DateUTC>.size)
 							let weatherReport = WeatherReport(Array(weatherData))
-							try mainDB.scribeNewData(date: date, weatherReport, logLevel: .debug)
+							try mainDB.scribeNewData(date: date, weatherReport, logLevel: .debug, flags: [])
 							breakCount -= 1
 							if(breakCount == 0) {
 								foo.cancelAll()

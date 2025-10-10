@@ -318,7 +318,7 @@ public struct WxDB:Sendable {
 		try newTrans.commit()
 	}
 
-	public func scribeNewData(date:DateUTC, _ data:WeatherReport, logLevel:Logger.Level) throws {
+	public func scribeNewData(date:DateUTC, _ data:WeatherReport, logLevel:Logger.Level, flags:Operation.Flags) throws {
 		var logger = log
 		logger.logLevel = logLevel
 		logger[metadataKey:"store_date"] = "\(date)"
@@ -336,7 +336,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.wind.windDirection!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.wind.windDirection!, flags:flags)
 			}
 			logger.trace("wrote wind direction", metadata:["windDirection":"\(data.wind.windDirection!)"])
 		}
@@ -349,7 +349,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.wind.windSpeed!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.wind.windSpeed!, flags:flags)
 			}
 			logger.trace("wrote wind speed", metadata:["windSpeed":"\(data.wind.windSpeed!)"])
 		}
@@ -362,7 +362,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.wind.windGust!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.wind.windGust!, flags:flags)
 			}
 			logger.trace("wrote wind gust", metadata:["windGust":"\(data.wind.windGust!)"])
 		}
@@ -377,7 +377,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.outdoorConditions.temp!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.outdoorConditions.temp!, flags:flags)
 			}
 			logger.trace("wrote outdoor temperature", metadata:["tempOut":"\(data.outdoorConditions.temp!)"])
 		}
@@ -390,7 +390,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.outdoorConditions.humidity!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.outdoorConditions.humidity!, flags:flags)
 			}
 			logger.trace("wrote outdoor humidity", metadata:["humidityOut":"\(data.outdoorConditions.humidity!)"])
 		}
@@ -403,7 +403,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.outdoorConditions.uvIndex!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.outdoorConditions.uvIndex!, flags:flags)
 			}
 			logger.trace("wrote UV index", metadata:["uvIndex":"\(data.outdoorConditions.uvIndex!)"])
 		}
@@ -416,7 +416,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.outdoorConditions.solarRadiation!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.outdoorConditions.solarRadiation!, flags:flags)
 			}
 			logger.trace("wrote solar radiation", metadata:["solarRadiation":"\(data.outdoorConditions.solarRadiation!)"])
 		}
@@ -431,7 +431,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.indoorConditions.temp!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.indoorConditions.temp!, flags:flags)
 			}
 			logger.trace("wrote indoor temperature", metadata:["tempIn":"\(data.indoorConditions.temp!)"])
 		}
@@ -444,7 +444,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.indoorConditions.humidity!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.indoorConditions.humidity!, flags:flags)
 			}
 			logger.trace("wrote indoor humidity", metadata:["humidityIn":"\(data.indoorConditions.humidity!)"])
 		}
@@ -457,7 +457,7 @@ public struct WxDB:Sendable {
 						throw LMDBError.keyExists
 					}
 				} catch LMDBError.notFound {}
-				try cursor.setEntry(key:date, value:data.indoorConditions.baro!, flags:[.append])
+				try cursor.setEntry(key:date, value:data.indoorConditions.baro!, flags:flags)
 			}
 			logger.trace("wrote indoor barometric pressure", metadata:["baro":"\(data.indoorConditions.baro!)"])
 		}
