@@ -64,7 +64,7 @@ extension CLI {
 				
 				// Task for receiving sync calls
 				foo.addTask {
-					var ne = try Negentropy(storage: mainDB.windspeed, frameSizeLimit: 20_000, buckets: 20, logLevel:.debug)
+					var ne = try Negentropy(storage: mainDB.windspeed, frameSizeLimit: 20_000, buckets: 20, logLevel:.info)
 					
 					let iterator = myInterface.makeAsyncIterator()
 					syncLoop: while(true) {
