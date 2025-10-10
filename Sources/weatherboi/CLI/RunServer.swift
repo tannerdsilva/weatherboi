@@ -53,7 +53,7 @@ extension CLI {
 				
 				var myPeers:[PeerInfo] = []
 				myPeers.append(PeerInfo(publicKey:peers.publicKey, ipAddress:ipAddress, port: peers.port, internalKeepAlive: .seconds(30)))
-				let myInterface = try WGInterface<[UInt8]>(staticPrivateKey:myPrivateKey, mtu:1400, initialConfiguration:myPeers, logLevel:.debug, listeningPort: myPort)
+				let myInterface = try WGInterface<[UInt8]>(staticPrivateKey:myPrivateKey, mtu:1400, initialConfiguration:myPeers, logLevel:.info, listeningPort: myPort)
 				
 				foo.addTask {
 					try await myInterface.run()
@@ -64,7 +64,7 @@ extension CLI {
 				
 				// Task for receiving sync calls
 				foo.addTask {
-					var ne = try Negentropy(storage: mainDB.windspeed, frameSizeLimit: 20_000, buckets: 20, logLevel:.info)
+					var ne = try Negentropy(storage: mainDB.windspeed, frameSizeLimit: 20_000, buckets: 20, logLevel:.debug)
 					
 					let iterator = myInterface.makeAsyncIterator()
 					syncLoop: while(true) {
