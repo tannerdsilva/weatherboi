@@ -29,7 +29,7 @@ extension CLI {
 
 		func run() async throws {
 			let mainDB = try WxDB(base:databasePath, logLevel:.debug)
-			let cliLogger = Logger(label: "wg.initiator")
+			var cliLogger = Logger(label: "wg.initiator")
 			cliLogger.logLevel = .debug
 			
 			_ = try await withThrowingTaskGroup(body: { foo in

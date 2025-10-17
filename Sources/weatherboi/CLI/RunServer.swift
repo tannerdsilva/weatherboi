@@ -39,7 +39,7 @@ extension CLI {
 		var peers:Peer
 
 		func run() async throws {
-			let cliLogger = Logger(label: "wg-test-tool.initiator")
+			var cliLogger = Logger(label: "wg-test-tool.initiator")
 			cliLogger.logLevel = .debug
 			
 			let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
