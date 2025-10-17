@@ -1,5 +1,5 @@
 {
-  "originHash" : "5f8ad1282d7fc8eb3a27566490f485535c0939c54a15818b05eaff51acce5f47",
+  "originHash" : "322d62615814c9c8881686703d0e03edb462f07759605c786728ec02b2af042b",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -283,7 +283,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tannerdsilva/wireguard-swift",
       "state" : {
-        "revision" : "0d08a1db18480965d7c5b13c476654e93d5b2e34"
+        "revision" : "fcfebc7d4a14028d8e9cb7feb0973d05da0b121b"
       }
     },
     {

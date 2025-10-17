@@ -112,7 +112,7 @@ extension CLI {
 							}
 							let weatherData = incomingData.dropFirst(MemoryLayout<DateUTC>.size)
 							let weatherReport = WeatherReport(Array(weatherData))
-							try mainDB.scribeNewData(date: date, weatherReport, logLevel: .debug, flags: [])
+							try mainDB.scribeNewDataUnsafe(date: date, weatherReport, logLevel: .debug)
 							breakCount -= 1
 							if(breakCount <= 0) {
 								break syncLoop

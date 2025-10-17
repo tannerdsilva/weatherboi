@@ -467,6 +467,85 @@ public struct WxDB:Sendable {
 		logger.debug("successfully wrote weather data")
 	}
 	
+	public func scribeNewDataUnsafe(date:DateUTC, _ data:WeatherReport, logLevel:Logger.Level) throws {
+		var logger = log
+		logger.logLevel = logLevel
+		logger[metadataKey:"store_date"] = "\(date)"
+		logger.trace("scribing new data")
+
+		let newTrans = try Transaction(env:env, readOnly:false)
+		
+		// scribe the wind data
+		if data.wind.windDirection != nil {
+			try winddir.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.wind.windDirection!, flags:[])
+			}
+			logger.trace("wrote wind direction", metadata:["windDirection":"\(data.wind.windDirection!)"])
+		}
+		if data.wind.windSpeed != nil {
+			try windspeed.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.wind.windSpeed!, flags:[])
+			}
+			logger.trace("wrote wind speed", metadata:["windSpeed":"\(data.wind.windSpeed!)"])
+		}
+		if data.wind.windGust != nil {
+			try windgust.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.wind.windGust!, flags:[])
+			}
+			logger.trace("wrote wind gust", metadata:["windGust":"\(data.wind.windGust!)"])
+		}
+
+		// scribe the outdoor conditions
+		if data.outdoorConditions.temp != nil {
+			try tempOut.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.outdoorConditions.temp!, flags:[])
+			}
+			logger.trace("wrote outdoor temperature", metadata:["tempOut":"\(data.outdoorConditions.temp!)"])
+		}
+		if data.outdoorConditions.humidity != nil {
+			try humidityOut.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.outdoorConditions.humidity!, flags:[])
+			}
+			logger.trace("wrote outdoor humidity", metadata:["humidityOut":"\(data.outdoorConditions.humidity!)"])
+		}
+		if data.outdoorConditions.uvIndex != nil {
+			try uvIndex.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.outdoorConditions.uvIndex!, flags:[])
+			}
+			logger.trace("wrote UV index", metadata:["uvIndex":"\(data.outdoorConditions.uvIndex!)"])
+		}
+		if data.outdoorConditions.solarRadiation != nil {
+			try solarRadiation.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.outdoorConditions.solarRadiation!, flags:[])
+			}
+			logger.trace("wrote solar radiation", metadata:["solarRadiation":"\(data.outdoorConditions.solarRadiation!)"])
+		}
+
+		// scribe the indoor conditions
+		if data.indoorConditions.temp != nil {
+			try tempIn.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.indoorConditions.temp!, flags:[])
+			}
+			logger.trace("wrote indoor temperature", metadata:["tempIn":"\(data.indoorConditions.temp!)"])
+		}
+		if data.indoorConditions.humidity != nil {
+			try humidityIn.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.indoorConditions.humidity!, flags:[])
+			}
+			logger.trace("wrote indoor humidity", metadata:["humidityIn":"\(data.indoorConditions.humidity!)"])
+		}
+		if data.indoorConditions.baro != nil {
+			try baro.cursor(tx:newTrans) { cursor in
+				try cursor.setEntry(key:date, value:data.indoorConditions.baro!, flags:[])
+			}
+			logger.trace("wrote indoor barometric pressure", metadata:["baro":"\(data.indoorConditions.baro!)"])
+		}
+
+		// commit the transaction
+		try newTrans.commit()
+		logger.debug("successfully wrote weather data")
+	}
+	
 	public func getWeatherReport(date:DateUTC) throws -> [UInt8] {
 		var weatherReport:[UInt8] = []
 		let newTrans = try Transaction(env:env, readOnly:true)

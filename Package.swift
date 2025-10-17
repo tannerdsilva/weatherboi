@@ -24,7 +24,7 @@ let package = Package(
 		.package(url:"https://github.com/tannerdsilva/QuickLMDB.git", "14.0.0"..<"14.1.0"),
 		.package(url:"https://github.com/tannerdsilva/bedrock.git", "7.0.1"..<"8.0.0"),
 		.package(url:"https://github.com/bwyma1/negentropy-swift", revision:"32071995bbdb4a4b60ca1ae8760284b3fbaec555"),
-		.package(url:"https://github.com/tannerdsilva/wireguard-swift", revision:"0d08a1db18480965d7c5b13c476654e93d5b2e34")
+		.package(url:"https://github.com/tannerdsilva/wireguard-swift", revision:"fcfebc7d4a14028d8e9cb7feb0973d05da0b121b")
 	],
     targets: [
 		.plugin(
