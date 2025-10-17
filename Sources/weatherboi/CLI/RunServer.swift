@@ -40,6 +40,7 @@ extension CLI {
 
 		func run() async throws {
 			let cliLogger = Logger(label: "wg-test-tool.initiator")
+			cliLogger.logLevel = .debug
 			
 			let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
 			let metadataDB = try MetadataDB(base:databasePath, logLevel:.debug)

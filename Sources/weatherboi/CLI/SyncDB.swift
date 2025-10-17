@@ -30,6 +30,7 @@ extension CLI {
 		func run() async throws {
 			let mainDB = try WxDB(base:databasePath, logLevel:.debug)
 			let cliLogger = Logger(label: "wg.initiator")
+			cliLogger.logLevel = .debug
 			
 			_ = try await withThrowingTaskGroup(body: { foo in
 				var myPeers:[PeerInfo] = []
@@ -113,12 +114,13 @@ extension CLI {
 							let weatherReport = WeatherReport(Array(weatherData))
 							try mainDB.scribeNewData(date: date, weatherReport, logLevel: .debug, flags: [])
 							breakCount -= 1
-							if(breakCount == 0) {
-								foo.cancelAll()
+							if(breakCount <= 0) {
+								break syncLoop
 							}
 						}
 					}
 				}
+				foo.cancelAll()
 			})
 		}
 	}
