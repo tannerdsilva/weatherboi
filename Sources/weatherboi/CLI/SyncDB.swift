@@ -56,12 +56,15 @@ extension CLI {
 				
 				var allHave:[DateUTC] = []
 				var allNeed:[DateUTC] = []
-				var breakCount = 9999
+				var breakCount = Int.max
 				
 				let iterator = myInterface.makeAsyncIterator()
 				syncLoop: while(true) {
 					// Wait to receive message of data
 					rcvData: do {
+						if(breakCount <= 0) {
+							break syncLoop
+						}
 						if let (_, incomingData) = try await iterator.next() {
 							
 							// Checking if it's an initiator type message, react accordingly
@@ -77,7 +80,6 @@ extension CLI {
 								} else {
 									cliLogger.info("Negentropy messaging complete. Sending data/query messages.")
 									// Send all of the data for the ID's we have
-									breakCount = allHave.count
 									for date in allHave {
 										let dateArray = date.RAW_access { ptr in
 											return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: MemoryLayout<DateUTC>.size))
@@ -86,6 +88,7 @@ extension CLI {
 										try await myInterface.write(publicKey: peers.publicKey, data: dateArray + weatherReport)
 									}
 									// Send data query messages for the ID's we need
+									breakCount = allNeed.count
 									for date in allNeed {
 										let dateArray = date.RAW_access { ptr in
 											return Array(UnsafeBufferPointer(start: ptr.baseAddress!, count: MemoryLayout<DateUTC>.size))
@@ -114,9 +117,6 @@ extension CLI {
 							let weatherReport = WeatherReport(Array(weatherData))
 							try mainDB.scribeNewDataUnsafe(date: date, weatherReport, logLevel: .debug)
 							breakCount -= 1
-							if(breakCount <= 0) {
-								break syncLoop
-							}
 						}
 					}
 				}

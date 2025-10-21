@@ -17,7 +17,8 @@ struct CLI:AsyncParsableCommand {
 		subcommands:[
 			Run.self,
 			Rain.self,
-			Sync.self
+			Sync.self,
+			WriteLargeTransaction.self
 		]
 	)
 
