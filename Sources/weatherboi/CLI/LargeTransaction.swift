@@ -32,7 +32,7 @@ extension CLI {
 		
 		func run() throws {
 			do {
-				let base = Path(FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop").path)
+				let base = Path(FileManager.default.homeDirectoryForCurrentUser.path)
 				let finalPath = base.appendingPathComponent("test-db1.mdb")
 				let memoryMapSize = size_t(finalPath.getFileSize() + 1 * 1024 * 1024 * 1024 * 1024) // add 5mb to the file
 				let env1 = try Environment(path:finalPath.path(), flags:[.noSubDir], mapSize:memoryMapSize, maxReaders:16, maxDBs:1, mode:[.ownerReadWriteExecute, .groupReadExecute, .otherReadExecute])
